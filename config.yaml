@@ -1,0 +1,31 @@
+# ---- Universe ----
+universe:
+  name: "SP500"            # or "TOP1000_DOLLAR_VOL"
+  start_date: "2010-01-01"
+  end_date: "2024-12-31"
+
+# ---- Data ----
+data:
+  provider: "tiingo"        # tiingo | polygon | csv | wrds
+  cache_dir: "data_cache"
+  fundamentals_lag_days: 90 # report lag to avoid look-ahead
+
+# ---- Factors ----
+factors:
+  momentum: {enabled: true, lookback_months: 12, skip_months: 1}
+  value:    {enabled: true, metric: "earnings_yield"}
+  quality:  {enabled: true, metric: "roe"}
+
+# ---- Portfolio ----
+portfolio:
+  rebalance: "M"            # monthly
+  n_deciles: 10
+  long_short: true          # long top decile, short bottom decile
+  weighting: "equal"
+
+# ---- Costs ----
+costs:
+  bps_per_trade: 8          # round-trip transaction cost in basis points
+
+# ---- Benchmark ----
+benchmark: "SPY"
