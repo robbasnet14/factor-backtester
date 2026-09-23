@@ -90,6 +90,21 @@ The first run pulls and caches data (slow), and records permanently-unavailable 
 `data_cache/*.json` so later runs skip them. Every run after the first reads the cache and
 is quick. Outputs land in `outputs/`.
 
+### With Docker
+
+```bash
+docker build -t factor-backtester .
+docker run --rm \
+  -v "$(pwd)/data_cache:/app/data_cache" \
+  -v "$(pwd)/outputs:/app/outputs" \
+  factor-backtester
+```
+
+The `data_cache` mount keeps downloaded data on your machine, so it survives between
+container runs just like a local run's cache; the `outputs` mount is where the CSVs and
+charts land. Add
+`-e TIINGO_KEY` to pass through a Tiingo key if you have one.
+
 ## Some honest caveats
 
 - **Value coverage is ~71%.** Fundamentals are missing for some renamed/delisted tickers,

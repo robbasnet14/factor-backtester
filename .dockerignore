@@ -1,0 +1,11 @@
+.git
+.venv/
+data_cache/
+outputs/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.log
+.env
+.DS_Store
+notebooks/
