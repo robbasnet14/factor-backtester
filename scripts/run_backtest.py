@@ -95,8 +95,10 @@ def main():
 
     # Forward monthly returns: the return earned FROM each rebalance date TO
     # the next one, so weights decided at t never see the return that produced them.
+    # fill_method=None: pandas 2.x forward-fills gaps by default, which would turn a
+    # delisted name's missing return into a silent 0% before the engine sees it.
     monthly_prices = prices.pivot(index="date", columns="ticker", values="adj_close").resample("ME").last()
-    forward_returns = monthly_prices.pct_change().shift(-1)
+    forward_returns = monthly_prices.pct_change(fill_method=None).shift(-1)
     # The final rebalance date has no realized forward return yet (data just
     # ends) — drop it rather than let the engine score it as a 0% period,
     # which would charge turnover cost for a position with no offsetting P&L.
@@ -146,7 +148,7 @@ def main():
     benchmark_ticker = cfg["benchmark"]
     benchmark_prices = load_prices([benchmark_ticker], start, end, cache_dir=cache_dir)
     benchmark_monthly = benchmark_prices.pivot(index="date", columns="ticker", values="adj_close")[benchmark_ticker]
-    benchmark_forward_returns = benchmark_monthly.resample("ME").last().pct_change().shift(-1)
+    benchmark_forward_returns = benchmark_monthly.resample("ME").last().pct_change(fill_method=None).shift(-1)
 
     plot_equity_curve(net_returns, benchmark=benchmark_forward_returns, path="outputs/equity_curve.png")
     plot_equity_curve(oos_returns, benchmark=benchmark_forward_returns, path="outputs/equity_curve_oos.png")
