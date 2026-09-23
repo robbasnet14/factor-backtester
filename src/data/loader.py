@@ -80,6 +80,11 @@ _TIINGO_RETRY_BASE_SECONDS = 60  # 429 backoff: 60s, 120s, 240s, ...
 _TIINGO_POLITE_DELAY_SECONDS = 0.5
 
 _UNAVAILABLE_PRICES_FILENAME = "unavailable_prices.json"
+# Per-ticker date range already requested from a provider. A name listed after
+# the start date, delisted before the end date, or a start date that falls on a
+# market holiday means the cached data can never span the full request, so the
+# data alone can't tell a complete cache from an incomplete one.
+_PRICE_CACHE_RANGES_FILENAME = "price_cache_ranges.json"
 
 
 def _to_yahoo_symbol(ticker: str) -> str:
@@ -107,6 +112,11 @@ def load_prices(tickers: list[str], start: str, end: str, cache_dir: str, force_
     one that now succeeds is removed from the skiplist; one that still fails
     stays on it) — or just delete the file to reset it entirely.
 
+    The date range already requested for each cached ticker is recorded in
+    `cache_dir/price_cache_ranges.json`, so a later call inside that range is
+    served from cache even when the data itself starts later or ends earlier
+    (a name listed or delisted mid-period, or a start date on a holiday).
+
     Returns a long DataFrame with columns [date, ticker, adj_close], sorted
     by (date, ticker). Ends with a one-line log summarizing how many tickers
     came from each source, including how many were skipped via the skiplist.
@@ -115,20 +125,20 @@ def load_prices(tickers: list[str], start: str, end: str, cache_dir: str, force_
     skiplist_path = Path(cache_dir) / _UNAVAILABLE_PRICES_FILENAME
     skiplist = _load_skiplist(skiplist_path)
     skiplist_changed = False
+    ranges_path = Path(cache_dir) / _PRICE_CACHE_RANGES_FILENAME
+    fetched_ranges = _load_skiplist(ranges_path)
+    ranges_before = dict(fetched_ranges)
 
     frames = []
     source_counts = {"yfinance": 0, "tiingo": 0, "unavailable": 0, "skiplisted": 0}
 
-    for i, ticker in enumerate(tickers):
+    for ticker in tickers:
         upper = ticker.upper()
         if not force_refresh and upper in skiplist:
             source_counts["skiplisted"] += 1
             continue
 
-        if i > 0:
-            time.sleep(_YFINANCE_POLITE_DELAY_SECONDS)
-
-        series, source = _load_price_series_with_fallback(ticker, start_ts, end_ts, cache_dir)
+        series, source = _load_price_series_with_fallback(ticker, start_ts, end_ts, cache_dir, fetched_ranges)
         if series is None:
             source_counts["unavailable"] += 1
             skiplist_changed = skiplist_changed or upper not in skiplist
@@ -144,6 +154,8 @@ def load_prices(tickers: list[str], start: str, end: str, cache_dir: str, force_
 
     if skiplist_changed:
         _save_skiplist(skiplist_path, skiplist)
+    if fetched_ranges != ranges_before:
+        _save_skiplist(ranges_path, fetched_ranges)
 
     _logger.info(
         "load_prices summary: %d from yfinance, %d from Tiingo fallback, %d unavailable, %d skiplisted",
@@ -160,11 +172,16 @@ def load_prices(tickers: list[str], start: str, end: str, cache_dir: str, force_
 
 
 def _load_price_series_with_fallback(
-    ticker: str, start_ts: pd.Timestamp, end_ts: pd.Timestamp, cache_dir: str
+    ticker: str, start_ts: pd.Timestamp, end_ts: pd.Timestamp, cache_dir: str, fetched_ranges: dict
 ) -> tuple[pd.DataFrame | None, str | None]:
     try:
         series = _load_one_price_series(
-            ticker, start_ts, end_ts, cache_dir, lambda s, e: _fetch_yfinance_prices(_to_yahoo_symbol(ticker), s, e)
+            ticker,
+            start_ts,
+            end_ts,
+            cache_dir,
+            lambda s, e: _fetch_yfinance_prices(_to_yahoo_symbol(ticker), s, e),
+            fetched_ranges,
         )
     except Exception as e:
         warnings.warn(f"yfinance error for {ticker}: {e}; trying Tiingo fallback")
@@ -176,7 +193,7 @@ def _load_price_series_with_fallback(
     # Yahoo had nothing — fall back to Tiingo, which covers many long-delisted names.
     try:
         series = _load_one_price_series(
-            ticker, start_ts, end_ts, cache_dir, lambda s, e: _fetch_tiingo_prices(ticker, s, e)
+            ticker, start_ts, end_ts, cache_dir, lambda s, e: _fetch_tiingo_prices(ticker, s, e), fetched_ranges
         )
     except Exception as e:
         warnings.warn(f"Skipping {ticker}: no data from yfinance, and Tiingo fallback failed ({e})")
@@ -196,11 +213,22 @@ def _load_one_price_series(
     end_ts: pd.Timestamp,
     cache_dir: str,
     fetch_fn: Callable[[pd.Timestamp, pd.Timestamp], pd.DataFrame],
+    fetched_ranges: dict,
 ) -> pd.DataFrame:
     path = _cache_path(cache_dir, "prices", ticker)
     cached = pd.read_parquet(path) if path.exists() else _empty_price_frame()
+    key = ticker.upper()
+    recorded = fetched_ranges.get(key)
 
-    if not cached.empty and cached["date"].min() <= start_ts and cached["date"].max() >= end_ts:
+    data_covers = not cached.empty and cached["date"].min() <= start_ts and cached["date"].max() >= end_ts
+    range_covers = (
+        not cached.empty
+        and recorded is not None
+        and pd.Timestamp(recorded[0]) <= start_ts
+        and pd.Timestamp(recorded[1]) >= end_ts
+    )
+
+    if data_covers or range_covers:
         merged = cached
     else:
         fetch_start = min(cached["date"].min(), start_ts) if not cached.empty else start_ts
@@ -213,6 +241,17 @@ def _load_one_price_series(
             .reset_index(drop=True)
         )
         merged.to_parquet(path, index=False)
+        # Record the range once the ticker has data, whether from this fetch or
+        # the cache (e.g. a delisted name Tiingo supplied and Yahoo now returns
+        # nothing for). With no data at all it goes on to the Tiingo fallback /
+        # skiplist as before. The end is capped at yesterday so a range reaching
+        # into the future gets re-fetched once it has data.
+        if not merged.empty:
+            covered_end = min(fetch_end, pd.Timestamp.today().normalize() - pd.Timedelta(days=1))
+            if recorded is not None:
+                fetch_start = min(fetch_start, pd.Timestamp(recorded[0]))
+                covered_end = max(covered_end, pd.Timestamp(recorded[1]))
+            fetched_ranges[key] = [fetch_start.date().isoformat(), covered_end.date().isoformat()]
 
     sliced = merged[(merged["date"] >= start_ts) & (merged["date"] <= end_ts)].copy()
     sliced.insert(1, "ticker", ticker.upper())
@@ -236,6 +275,8 @@ def _fetch_yfinance_prices(symbol: str, start_ts: pd.Timestamp, end_ts: pd.Times
             if attempt == _YFINANCE_MAX_RETRIES - 1:
                 raise
             time.sleep(_YFINANCE_RETRY_BACKOFF_SECONDS * (attempt + 1))
+    # Polite delay only after a real request, so cache hits aren't slowed down.
+    time.sleep(_YFINANCE_POLITE_DELAY_SECONDS)
 
     if df is None or df.empty:
         return _empty_price_frame()

@@ -28,7 +28,7 @@ keyless). Skip straight to step 1.
 python -m pytest tests/ -v
 ```
 
-What you're checking: all 62 tests pass. This proves the individual pieces — the momentum
+What you're checking: all 65 tests pass. This proves the individual pieces — the momentum
 formula, the point-in-time lag on fundamentals, the cost model, the walk-forward fold
 logic, the delisting-exit handling, and so on — behave correctly in isolation, using
 synthetic data. It does **not** by itself prove real market data flows through cleanly;

@@ -72,7 +72,7 @@ src/
   backtest/   portfolio construction, cost model, engine, walk-forward
   analytics/  performance metrics, coverage report, equity-curve chart
 scripts/run_backtest.py   the entry point that wires it all together
-tests/        62 tests, network-mocked
+tests/        65 tests, network-mocked
 config.yaml   every knob (universe, dates, costs, factors, validation)
 ```
 
@@ -102,10 +102,9 @@ docker run --rm \
   factor-backtester
 ```
 
-The `data_cache` mount keeps downloaded data on your machine, so it survives between
-container runs just like a local run's cache; the `outputs` mount is where the CSVs and
-charts land. Add
-`-e TIINGO_KEY` to pass through a Tiingo key if you have one.
+The `data_cache` mount keeps downloaded data on your machine, so reruns reuse it instead
+of downloading everything again; the `outputs` mount is where the CSVs and charts land.
+Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
 
 ## Some honest caveats
 
@@ -129,7 +128,7 @@ charts land. Add
 python -m pytest tests/
 ```
 
-62 tests, all network-mocked except one opt-in live SEC integration check. They cover the
+65 tests, all network-mocked except one opt-in live SEC integration check. They cover the
 easy-to-get-wrong stuff: momentum's skip-month, the point-in-time fundamentals lag, the
 delisted-name universe, turnover cost math, the yfinance→Tiingo fallback, and — the one I
 care about most — a test proving the engine trades on *forward* returns, never

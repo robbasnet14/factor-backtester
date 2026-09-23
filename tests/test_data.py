@@ -64,6 +64,71 @@ def test_load_prices_fetches_caches_and_slices(monkeypatch, tmp_path):
     assert len(calls) == 1
 
 
+def test_load_prices_cache_hit_when_data_starts_after_requested_start(monkeypatch, tmp_path):
+    # 2020-01-01 is a market holiday, so the data can never start on the requested
+    # date — the same shape as a name listed (or delisted) partway through the range.
+    calls = []
+
+    def fake_download(symbol, **kwargs):
+        calls.append(symbol)
+        return _fake_yf_frame(["2020-01-02", "2020-01-03", "2020-01-06"], [10.0, 10.5, 11.0], symbol)
+
+    monkeypatch.setattr(loader_module.yf, "download", fake_download)
+    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+
+    load_prices(["aapl"], "2020-01-01", "2020-01-06", cache_dir=str(tmp_path))
+    df = load_prices(["aapl"], "2020-01-01", "2020-01-06", cache_dir=str(tmp_path))
+
+    assert len(calls) == 1
+    assert len(df) == 3
+    ranges = json.loads((tmp_path / "price_cache_ranges.json").read_text())
+    assert ranges["AAPL"] == ["2020-01-01", "2020-01-06"]
+
+
+def test_load_prices_cached_delisted_name_is_not_refetched_when_yahoo_has_nothing(monkeypatch, tmp_path):
+    # A delisted name cached from the Tiingo fallback: Yahoo now returns nothing
+    # for it, but the cached data must still be served — and asked for only once.
+    (tmp_path / "prices").mkdir()
+    pd.DataFrame(
+        {"date": pd.to_datetime(["2020-01-02", "2020-01-03"]), "adj_close": [5.0, 5.1]}
+    ).to_parquet(tmp_path / "prices" / "GONE.parquet", index=False)
+
+    calls, sleeps = [], []
+
+    def fake_download(symbol, **kwargs):
+        calls.append(symbol)
+        return pd.DataFrame()
+
+    monkeypatch.setattr(loader_module.yf, "download", fake_download)
+    monkeypatch.setattr(loader_module.time, "sleep", lambda s: sleeps.append(s))
+
+    first = load_prices(["GONE"], "2020-01-01", "2020-01-10", cache_dir=str(tmp_path))
+    sleeps.clear()
+    second = load_prices(["GONE"], "2020-01-01", "2020-01-10", cache_dir=str(tmp_path))
+
+    assert len(first) == len(second) == 2
+    assert len(calls) == 1
+    assert sleeps == []  # a cache hit makes no request, so no polite delay either
+
+
+def test_load_prices_refetches_when_request_extends_past_recorded_range(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_download(symbol, **kwargs):
+        calls.append(symbol)
+        return _fake_yf_frame(["2020-01-02", "2020-01-03", "2020-01-06"], [10.0, 10.5, 11.0], symbol)
+
+    monkeypatch.setattr(loader_module.yf, "download", fake_download)
+    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+
+    load_prices(["aapl"], "2020-01-01", "2020-01-06", cache_dir=str(tmp_path))
+    load_prices(["aapl"], "2020-01-01", "2020-01-10", cache_dir=str(tmp_path))
+
+    assert len(calls) == 2
+    ranges = json.loads((tmp_path / "price_cache_ranges.json").read_text())
+    assert ranges["AAPL"] == ["2020-01-01", "2020-01-10"]
+
+
 def test_load_prices_maps_dot_ticker_to_yahoo_dash_symbol(monkeypatch, tmp_path):
     seen_symbols = []
 
