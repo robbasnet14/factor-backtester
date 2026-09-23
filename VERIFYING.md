@@ -28,7 +28,7 @@ keyless). Skip straight to step 1.
 python -m pytest tests/ -v
 ```
 
-What you're checking: all 65 tests pass. This proves the individual pieces — the momentum
+What you're checking: all 69 tests pass. This proves the individual pieces — the momentum
 formula, the point-in-time lag on fundamentals, the cost model, the walk-forward fold
 logic, the delisting-exit handling, and so on — behave correctly in isolation, using
 synthetic data. It does **not** by itself prove real market data flows through cleanly;
@@ -57,10 +57,11 @@ This is the actual "does it work" test. What happens, in order, and what to watc
   scroll by for names that are delisted or have gaps in fundamentals coverage — that's
   expected, not a failure.
 - **Factor computation + backtest**: fast, all local computation once data is loaded.
-- **Console output**: a full-period ("in-sample, reference only") summary table, a
-  coverage report (composite / value-and-quality coverage per date), a list of the
+- **Console output**: a line saying how many scored name-months the tradability filter
+  dropped (names with no price on the rebalance date), a full-period ("in-sample,
+  reference only") summary table, a coverage report (composite / value-and-quality coverage per date), a list of the
   walk-forward fold boundaries, and the out-of-sample ("headline") summary table —
-  this is where the numbers in this README's Results table come from.
+  this is where the numbers in the README's Results table come from.
 - **Files written to `outputs/`**: `net_returns.csv`, `oos_net_returns.csv`,
   `coverage_report.csv`, `equity_curve.png`, `equity_curve_oos.png`.
 
@@ -68,13 +69,14 @@ This is the actual "does it work" test. What happens, in order, and what to watc
 
 - `outputs/equity_curve_oos.png` exists and opens — it should show two lines (strategy vs.
   SPY) starting at $1 and diverging over time.
-- The printed "Walk-forward OUT-OF-SAMPLE summary" numbers roughly match the Results table
-  above (they won't be bit-for-bit identical if your data cache differs slightly, e.g. a
-  ticker that's delisted since I last ran this, but they should be in the same
-  ballpark — Sharpe near 0, not suddenly 2.0).
+- The printed "Walk-forward OUT-OF-SAMPLE summary" numbers roughly match the README's
+  Results table: Sharpe 0.02, annualized return about −1.6%, max drawdown about −50.4%,
+  deflated Sharpe about 0.52, turnover about 39%. They won't be bit-for-bit identical if
+  your data cache differs slightly (e.g. a ticker that's delisted since I last ran this),
+  but they should be in the same ballpark — Sharpe near 0, not suddenly 2.0.
 - `outputs/coverage_report.csv` — spot check that `composite_coverage` is high (~90%) and
-  `value_quality_coverage` is meaningfully lower (~70%), matching the caveat above about
-  fundamentals gaps.
+  `value_quality_coverage` is meaningfully lower (~70%), matching the README's caveat
+  about fundamentals gaps.
 
 ## 3. Confirm the caching actually works
 

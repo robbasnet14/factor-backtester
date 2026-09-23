@@ -22,7 +22,8 @@ which turns out to be the hard part of backtesting.
 - Computes three factors per stock, per month: 12-1 momentum, earnings yield (value),
   and ROE (quality); standardizes each date's cross-section and blends them.
 - Goes long the top decile, short the bottom decile, rebalances monthly, and charges
-  8 bps per trade based on turnover.
+  8 bps per trade based on turnover. Only names that actually traded on the rebalance
+  date are ranked, so a delisted company can't be bought or held after it's gone.
 - Reports the honest version of performance: out-of-sample Sharpe from a walk-forward
   test, a deflated Sharpe that accounts for how many configurations I tried, plus
   drawdown, turnover, and factor coverage.
@@ -35,15 +36,20 @@ that matters; the in-sample column is shown only for reference.
 
 | Metric | Out-of-sample (headline) | In-sample (reference) |
 |---|---|---|
-| Annualized return | −1.4% | 0.05% |
-| Annualized volatility | 18.9% | 16.5% |
-| Sharpe ratio | 0.02 | 0.09 |
-| Deflated Sharpe (probability) | 0.53 | 0.63 |
-| Max drawdown | −48.9% | −44.5% |
-| Avg monthly turnover | 39.0% | 38.9% |
-| Hit rate | 56.0% | 54.2% |
+| Annualized return | −1.6% | −0.1% |
+| Annualized volatility | 19.3% | 16.7% |
+| Sharpe ratio | 0.02 | 0.08 |
+| Deflated Sharpe (probability) | 0.52 | 0.62 |
+| Max drawdown | −50.4% | −46.4% |
+| Avg monthly turnover | 39.1% | 38.9% |
+| Hit rate | 56.0% | 54.8% |
 
 Mean factor coverage across rebalance dates: composite score 91%, value-and-quality 71%.
+
+These numbers are after a correctness fix: earlier versions could hold a delisted name in
+a month it never traded (50 position-months, booked at a flat 0%). Excluding untradable
+names moved the out-of-sample return from −1.4% to −1.6% and max drawdown from −48.9% to
+−50.4%; the Sharpe stayed at 0.02.
 
 ![Out-of-sample equity curve vs SPY](outputs/equity_curve_oos.png)
 
@@ -52,7 +58,7 @@ Mean factor coverage across rebalance dates: composite score 91%, value-and-qual
 The honest answer: **a naive momentum/value/quality long–short does not generate
 meaningful risk-adjusted returns in large-cap US equities once you account for realistic
 costs.** Out of sample the Sharpe is essentially zero (0.02) and the return is slightly
-negative, with a deep drawdown. Even in-sample it's weak (0.09). The deflated Sharpe —
+negative, with a deep drawdown. Even in-sample it's weak (0.08). The deflated Sharpe —
 which asks whether a result could just be luck given how many variants you tried — sits
 around 0.5, basically a coin flip, so there's no evidence of a real edge here.
 
@@ -72,7 +78,7 @@ src/
   backtest/   portfolio construction, cost model, engine, walk-forward
   analytics/  performance metrics, coverage report, equity-curve chart
 scripts/run_backtest.py   the entry point that wires it all together
-tests/        65 tests, network-mocked
+tests/        69 tests, network-mocked
 config.yaml   every knob (universe, dates, costs, factors, validation)
 ```
 
@@ -111,9 +117,12 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
 - **Value coverage is ~71%.** Fundamentals are missing for some renamed/delisted tickers,
   and a few multi-share-class names (e.g. Visa) tag EPS in a custom way SEC's API doesn't
   expose. Momentum/quality coverage is higher (~91% composite).
-- **~25 delisted positions had no exit price** and were treated as a flat 0% for that
-  period. That understates the true outcome (a bankruptcy wipeout is a real loss); the
-  price data alone can't tell me which delistings were mergers vs. failures.
+- **Delisting payouts aren't modeled.** A name that stops trading while held is exited at
+  its last traded price (37 position-months); 4 of those never traded again after entry, so
+  they're booked at 0%. What shareholders actually received — a takeover premium or a
+  bankruptcy loss — isn't in free price data (it needs something like CRSP delisting
+  returns), so the direction of this bias is unclear, but it touches very few of the
+  ~15,900 position-months.
 - **Costs are a flat 8 bps per trade** — a reasonable stand-in, not the truth; real costs
   vary by name and size.
 - **The "embargo" in the walk-forward is a settling gap, not an ML-style leakage guard,**
@@ -128,9 +137,9 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
 python -m pytest tests/
 ```
 
-65 tests, all network-mocked except one opt-in live SEC integration check. They cover the
+69 tests, all network-mocked except one opt-in live SEC integration check. They cover the
 easy-to-get-wrong stuff: momentum's skip-month, the point-in-time fundamentals lag, the
-delisted-name universe, turnover cost math, the yfinance→Tiingo fallback, and — the one I
+delisted-name universe, never holding a name on a date it didn't trade, turnover cost math, the yfinance→Tiingo fallback, and — the one I
 care about most — a test proving the engine trades on *forward* returns, never
 contemporaneous ones.
 
@@ -139,7 +148,5 @@ For a step-by-step walkthrough of checking the tests and the real pipeline yours
 
 ## Still to do
 
-- Fold weights on "has a current price," not just "has a valid factor score," so a
-  delisted name can't be held on a month it never traded.
 - A per-name cost model instead of a flat rate.
 - A couple more factors (low-vol, size) to see how the mix changes.

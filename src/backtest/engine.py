@@ -35,9 +35,18 @@ def run_backtest(
     in `prices` — i.e. "sell at the last price we ever saw" rather than
     "assume nothing happened."
 
+    A name that stops trading partway through the holding month needs no
+    special handling: its month-end price is its last trade, so its forward
+    return is already "exit at the last traded price." If it never trades
+    again after `t`, the exit price above is its price at `t`, i.e. 0% —
+    what the actual delisting paid out (a merger premium, a bankruptcy
+    loss) isn't in the price data.
+
     Documented limitation: if `prices` isn't supplied, or a ticker has no
     recorded price at all to exit at, that cell still falls back to a 0%
-    assumption with a warning. There is nothing to exit at in that case, and
+    assumption with a warning. Weights built with a tradability mask (see
+    `portfolio.tradable_on_rebalance`) never hold a name without a price at
+    `t`, so in the main pipeline this only fires if the mask is skipped. There is nothing to exit at in that case, and
     the true delisting outcome (a merger payout, a bankruptcy wipeout, or
     anything between) is genuinely unknown from price data alone — this is
     not modeled, and the warning is how that limitation stays visible

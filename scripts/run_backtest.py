@@ -22,7 +22,7 @@ from src.analytics.metrics import (
 )
 from src.analytics.plots import plot_equity_curve
 from src.backtest.engine import run_backtest
-from src.backtest.portfolio import decile_portfolios
+from src.backtest.portfolio import decile_portfolios, tradable_on_rebalance
 from src.backtest.validation import walk_forward_backtest
 from src.data.loader import load_fundamentals, load_prices
 from src.data.universe import build_universe
@@ -91,13 +91,23 @@ def main():
     monthly_membership = monthly_membership.reindex(columns=composite.columns, fill_value=False)
     composite = composite.where(monthly_membership)
 
-    weights = decile_portfolios(composite, n_deciles=port_cfg["n_deciles"], long_short=port_cfg["long_short"])
+    # Only names with a price on the rebalance date can be bought or sold then;
+    # a delisted name can otherwise keep a score (and a weight) after it's gone.
+    daily_prices = prices.pivot(index="date", columns="ticker", values="adj_close")
+    tradable = tradable_on_rebalance(daily_prices, composite.index)
+    tradable = tradable.reindex(columns=composite.columns, fill_value=False)
+    n_untradable = int((composite.notna() & ~tradable).to_numpy().sum())
+    print(f"Tradability filter: dropped {n_untradable} scored name-months with no price on the rebalance date")
+
+    weights = decile_portfolios(
+        composite, n_deciles=port_cfg["n_deciles"], long_short=port_cfg["long_short"], tradable=tradable
+    )
 
     # Forward monthly returns: the return earned FROM each rebalance date TO
     # the next one, so weights decided at t never see the return that produced them.
     # fill_method=None: pandas 2.x forward-fills gaps by default, which would turn a
     # delisted name's missing return into a silent 0% before the engine sees it.
-    monthly_prices = prices.pivot(index="date", columns="ticker", values="adj_close").resample("ME").last()
+    monthly_prices = daily_prices.resample("ME").last()
     forward_returns = monthly_prices.pct_change(fill_method=None).shift(-1)
     # The final rebalance date has no realized forward return yet (data just
     # ends) — drop it rather than let the engine score it as a 0% period,
