@@ -2,9 +2,6 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# scripts/run_backtest.py imports from src/, which lives at the project root.
-ENV PYTHONPATH=/app
-
 # Install dependencies in their own layer so code edits don't trigger a reinstall.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

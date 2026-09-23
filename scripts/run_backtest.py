@@ -1,8 +1,13 @@
 """Entry point: wire everything together. Grows as you complete each step."""
 import argparse
+import sys
 from pathlib import Path
 
 import pandas as pd
+
+# Running `python scripts/run_backtest.py` puts scripts/ on sys.path, not the
+# project root, so `src` wouldn't be importable without this.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.analytics.metrics import (
     annualized_return,
