@@ -25,7 +25,9 @@ portfolio:
 
 # ---- Costs ----
 costs:
-  bps_per_trade: 8          # round-trip transaction cost in basis points
+  cost_model: "flat"        # "flat": every trade pays bps_per_trade; "per_name": volatility-scaled (see src/backtest/costs.py)
+  bps_per_trade: 8          # round-trip transaction cost in basis points (per_name: what the median-volatility name pays)
+  vol_lookback_days: 63     # per_name only: trading days of daily returns used for each name's volatility
 
 # ---- Benchmark ----
 benchmark: "SPY"

@@ -22,7 +22,8 @@ which turns out to be the hard part of backtesting.
 - Computes three factors per stock, per month: 12-1 momentum, earnings yield (value),
   and ROE (quality); standardizes each date's cross-section and blends them.
 - Goes long the top decile, short the bottom decile, rebalances monthly, and charges
-  8 bps per trade based on turnover. Only names that actually traded on the rebalance
+  8 bps per trade based on turnover (or, with `cost_model: per_name`, a volatility-scaled
+  cost per name). Only names that actually traded on the rebalance
   date are ranked, so a delisted company can't be bought or held after it's gone.
 - Reports the honest version of performance: out-of-sample Sharpe from a walk-forward
   test, a deflated Sharpe that accounts for how many configurations I tried, plus
@@ -46,6 +47,16 @@ that matters; the in-sample column is shown only for reference.
 
 Mean factor coverage across rebalance dates: composite score 91%, value-and-quality 71%.
 
+**Cost sensitivity** — the same portfolios under three cost assumptions (printed by every
+run). The headline uses the flat 8 bps because it's the model with the fewest assumptions:
+you can sanity-check 8 bps without trusting my volatility proxy.
+
+| Cost model | OOS return | OOS Sharpe | OOS max drawdown | Deflated Sharpe | In-sample Sharpe |
+|---|---|---|---|---|---|
+| Gross (no costs) | −1.2% | 0.04 | −49.6% | 0.547 | 0.10 |
+| Flat 8 bps (headline) | −1.6% | 0.02 | −50.4% | 0.521 | 0.08 |
+| Per-name, volatility-scaled | −1.7% | 0.01 | −50.6% | 0.515 | 0.08 |
+
 These numbers are after a correctness fix: earlier versions could hold a delisted name in
 a month it never traded (50 position-months, booked at a flat 0%). Excluding untradable
 names moved the out-of-sample return from −1.4% to −1.6% and max drawdown from −48.9% to
@@ -55,19 +66,24 @@ names moved the out-of-sample return from −1.4% to −1.6% and max drawdown fr
 
 ### What this means
 
-The honest answer: **a naive momentum/value/quality long–short does not generate
-meaningful risk-adjusted returns in large-cap US equities once you account for realistic
-costs.** Out of sample the Sharpe is essentially zero (0.02) and the return is slightly
-negative, with a deep drawdown. Even in-sample it's weak (0.08). The deflated Sharpe —
-which asks whether a result could just be luck given how many variants you tried — sits
-around 0.5, basically a coin flip, so there's no evidence of a real edge here.
+The honest answer: **a naive momentum/value/quality long–short has no edge in large-cap
+US equities — not after costs, and not before them either.** Out of sample the Sharpe is
+essentially zero (0.02) and the return is slightly negative, with a deep drawdown. Even
+in-sample it's weak (0.08). The deflated Sharpe — which asks whether a result could just
+be luck given how many variants you tried — sits around 0.5, basically a coin flip.
 
-That's a legitimate finding, not a broken project. Simple factor premia in large, liquid
-US names have compressed over the last decade and get eaten by turnover (~39%/month) and
-crowding. The whole point of building this carefully — point-in-time universe, no
-look-ahead, real costs, walk-forward validation, deflated Sharpe — was to get an answer I
-could trust. The answer is "this simple version doesn't beat costs," and a version that
-looked great would more likely mean a bug than a discovery.
+Costs aren't what kills it. With trading costs set to zero the out-of-sample Sharpe is
+0.04 and the return is still negative (−1.2% a year); costs take roughly another 0.4
+percentage points a year on top of that. There was no gross edge for costs to eat. That's
+a stronger finding than "it works but trading is too expensive": the composite signal
+itself doesn't separate future winners from losers in this universe and period. This
+backtest can't tell me *why* — factor decay, crowding, or a too-naive equal-weight blend
+are all candidates — only that the answer isn't costs.
+
+That's a legitimate finding, not a broken project. The whole point of building this
+carefully — point-in-time universe, no look-ahead, real costs, walk-forward validation,
+deflated Sharpe — was to get an answer I could trust, and a version that looked great
+would more likely mean a bug than a discovery.
 
 ## Layout
 
@@ -78,7 +94,7 @@ src/
   backtest/   portfolio construction, cost model, engine, walk-forward
   analytics/  performance metrics, coverage report, equity-curve chart
 scripts/run_backtest.py   the entry point that wires it all together
-tests/        69 tests, network-mocked
+tests/        75 tests, network-mocked
 config.yaml   every knob (universe, dates, costs, factors, validation)
 ```
 
@@ -123,8 +139,17 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
   bankruptcy loss — isn't in free price data (it needs something like CRSP delisting
   returns), so the direction of this bias is unclear, but it touches very few of the
   ~15,900 position-months.
-- **Costs are a flat 8 bps per trade** — a reasonable stand-in, not the truth; real costs
-  vary by name and size.
+- **Costs are a flat 8 bps per trade in the headline** — a reasonable stand-in, not the
+  truth; real costs vary by name and size.
+- **The per-name cost model is a proxy for the wrong variable.** It scales cost with each
+  name's trailing 63-day volatility (the median name pays 8 bps), because volatility is the
+  only cost-relevant signal in the data. But spreads are driven mainly by liquidity, not
+  volatility: a high-volatility mega-cap is still cheap to trade and a low-volatility thin
+  name isn't. There's no volume data here, so it can't be modeled properly. It also scales
+  within each date, so a market-wide crisis doesn't raise costs across the board. And the
+  scaling is linear (a name with 3× the median volatility pays 3× the cost), which is an
+  assumption rather than an estimate: if spreads rise less than proportionally with
+  volatility, as is often found, it overstates costs for the most volatile names.
 - **The "embargo" in the walk-forward is a settling gap, not an ML-style leakage guard,**
   because the factors are fixed formulas with nothing trained. There's a note in
   `validation.py`.
@@ -137,7 +162,7 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
 python -m pytest tests/
 ```
 
-69 tests, all network-mocked except one opt-in live SEC integration check. They cover the
+75 tests, all network-mocked except one opt-in live SEC integration check. They cover the
 easy-to-get-wrong stuff: momentum's skip-month, the point-in-time fundamentals lag, the
 delisted-name universe, never holding a name on a date it didn't trade, turnover cost math, the yfinance→Tiingo fallback, and — the one I
 care about most — a test proving the engine trades on *forward* returns, never
@@ -148,5 +173,6 @@ For a step-by-step walkthrough of checking the tests and the real pipeline yours
 
 ## Still to do
 
-- A per-name cost model instead of a flat rate.
+- A liquidity-based cost model (e.g. square-root impact on dollar volume), which needs
+  volume data the loader doesn't store yet.
 - A couple more factors (low-vol, size) to see how the mix changes.

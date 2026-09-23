@@ -55,7 +55,7 @@ def make_walk_forward_folds(
 def walk_forward_backtest(
     weights: pd.DataFrame,
     forward_returns: pd.DataFrame,
-    cost_bps: float,
+    cost_bps: float | pd.DataFrame,
     start: str,
     end: str,
     initial_train_months: int = 24,

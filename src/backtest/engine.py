@@ -12,7 +12,7 @@ _logger = logging.getLogger(__name__)
 def run_backtest(
     weights: pd.DataFrame,
     forward_returns: pd.DataFrame,
-    cost_bps: float,
+    cost_bps: float | pd.DataFrame,
     prices: pd.DataFrame | None = None,
 ) -> pd.Series:
     """Combine target weights with forward returns, net of costs.
@@ -51,6 +51,9 @@ def run_backtest(
     anything between) is genuinely unknown from price data alone — this is
     not modeled, and the warning is how that limitation stays visible
     instead of silently understating risk.
+
+    `cost_bps` is either one flat cost for every trade or a (date x ticker)
+    frame of per-name costs — see `costs.apply_costs` / `costs.build_costs`.
 
     Returns a periodic net-of-cost P&L series indexed by rebalance date `t`,
     representing the return earned by the position established at `t`.

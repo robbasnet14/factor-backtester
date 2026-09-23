@@ -21,6 +21,7 @@ from src.analytics.metrics import (
     sharpe,
 )
 from src.analytics.plots import plot_equity_curve
+from src.backtest.costs import build_costs
 from src.backtest.engine import run_backtest
 from src.backtest.portfolio import decile_portfolios, tradable_on_rebalance
 from src.backtest.validation import walk_forward_backtest
@@ -49,6 +50,23 @@ def print_summary(title: str, returns: pd.Series, weights: pd.DataFrame, n_trial
     print("-" * (label_width + 12))
     for label, value_str in summary.items():
         print(f"{label:<{label_width}}  {value_str:>10}")
+
+
+def print_cost_sensitivity(rows: dict[str, tuple[pd.Series, pd.Series]], n_trials: int):
+    """One line per cost model: in-sample Sharpe plus the out-of-sample headline metrics.
+    Turnover is the same under every model (the weights don't change), so it isn't repeated."""
+    print("\nCost sensitivity (same portfolios, different cost models)")
+    header = f"{'model':<16}{'IS Sharpe':>10}{'OOS return':>12}{'OOS Sharpe':>12}{'OOS max DD':>12}{'OOS DSR':>9}"
+    print(header)
+    print("-" * len(header))
+    for label, (is_returns, oos_returns) in rows.items():
+        print(
+            f"{label:<16}{sharpe(is_returns, PERIODS_PER_YEAR):>10.2f}"
+            f"{annualized_return(oos_returns, PERIODS_PER_YEAR):>12.2%}"
+            f"{sharpe(oos_returns, PERIODS_PER_YEAR):>12.2f}"
+            f"{max_drawdown(oos_returns):>12.2%}"
+            f"{deflated_sharpe(oos_returns, n_trials):>9.3f}"
+        )
 
 
 def main():
@@ -114,11 +132,12 @@ def main():
     # which would charge turnover cost for a position with no offsetting P&L.
     forward_returns = forward_returns.dropna(how="all")
 
+    costs = build_costs(cost_cfg, daily_prices, weights.index)
+    print(f"Cost model: {cost_cfg.get('cost_model', 'flat')} ({cost_cfg['bps_per_trade']} bps base)")
+
     # Passing raw price levels lets the engine exit a delisted/acquired name
     # at its last available price instead of silently assuming it earned 0%.
-    net_returns = run_backtest(
-        weights, forward_returns, cost_bps=cost_cfg["bps_per_trade"], prices=monthly_prices
-    ).dropna()
+    net_returns = run_backtest(weights, forward_returns, cost_bps=costs, prices=monthly_prices).dropna()
 
     out_path = Path("outputs") / "net_returns.csv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -133,10 +152,7 @@ def main():
     print_coverage_summary(report)
 
     wf_cfg = cfg.get("validation", {}).get("walk_forward", {})
-    oos_returns, folds = walk_forward_backtest(
-        weights,
-        forward_returns,
-        cost_bps=cost_cfg["bps_per_trade"],
+    wf_kwargs = dict(
         start=start,
         end=end,
         initial_train_months=wf_cfg.get("initial_train_months", 60),
@@ -144,6 +160,7 @@ def main():
         embargo_months=wf_cfg.get("embargo_months", 1),
         prices=monthly_prices,
     )
+    oos_returns, folds = walk_forward_backtest(weights, forward_returns, cost_bps=costs, **wf_kwargs)
     print(f"\nWalk-forward folds: {len(folds)}")
     for i, fold in enumerate(folds):
         print(
@@ -154,6 +171,22 @@ def main():
     oos_path = Path("outputs") / "oos_net_returns.csv"
     oos_returns.to_csv(oos_path, header=True)
     print_summary("Walk-forward OUT-OF-SAMPLE summary (THE headline number)", oos_returns, weights, n_trials)
+
+    # Same portfolios under zero, flat and per-name costs, so the effect of the
+    # cost assumption is shown rather than asserted.
+    sensitivity_costs = {
+        "gross (no cost)": 0.0,
+        "flat": build_costs({**cost_cfg, "cost_model": "flat"}, daily_prices, weights.index),
+        "per_name": build_costs({**cost_cfg, "cost_model": "per_name"}, daily_prices, weights.index),
+    }
+    sensitivity = {
+        label: (
+            run_backtest(weights, forward_returns, cost_bps=cost, prices=monthly_prices).dropna(),
+            walk_forward_backtest(weights, forward_returns, cost_bps=cost, **wf_kwargs)[0],
+        )
+        for label, cost in sensitivity_costs.items()
+    }
+    print_cost_sensitivity(sensitivity, n_trials)
 
     benchmark_ticker = cfg["benchmark"]
     benchmark_prices = load_prices([benchmark_ticker], start, end, cache_dir=cache_dir)
