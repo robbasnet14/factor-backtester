@@ -1,5 +1,7 @@
 # Factor Backtester
 
+[![tests](https://github.com/robbasnet14/factor-backtester/actions/workflows/tests.yml/badge.svg)](https://github.com/robbasnet14/factor-backtester/actions/workflows/tests.yml)
+
 A backtesting engine for long/short equity factor strategies. Each month it ranks
 stocks by momentum, value, and quality, buys the best ones, shorts the worst, and
 simulates the whole thing on point-in-time data with trading costs — so the numbers

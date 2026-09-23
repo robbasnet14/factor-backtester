@@ -1,0 +1,26 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # The live SEC EDGAR integration check is excluded: CI should not depend
+      # on SEC's availability or rate limits. Everything else is network-mocked.
+      - name: Run tests
+        run: >
+          python -m pytest tests/ -v
+          --deselect tests/test_data.py::test_load_fundamentals_real_aapl_returns_nonempty_2019_2020
