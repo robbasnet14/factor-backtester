@@ -94,7 +94,7 @@ src/
   backtest/   portfolio construction, cost model, engine, walk-forward
   analytics/  performance metrics, coverage report, equity-curve chart
 scripts/run_backtest.py   the entry point that wires it all together
-tests/        75 tests, network-mocked
+tests/        76 tests, network-mocked
 config.yaml   every knob (universe, dates, costs, factors, validation)
 ```
 
@@ -162,11 +162,16 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
 python -m pytest tests/
 ```
 
-75 tests, all network-mocked except one opt-in live SEC integration check. They cover the
+76 tests, all network-mocked except one opt-in live SEC integration check. They cover the
 easy-to-get-wrong stuff: momentum's skip-month, the point-in-time fundamentals lag, the
 delisted-name universe, never holding a name on a date it didn't trade, turnover cost math, the yfinance→Tiingo fallback, and — the one I
 care about most — a test proving the engine trades on *forward* returns, never
 contemporaneous ones.
+
+CI runs the suite on both pandas 2.2 and 3.x, since `requirements.txt` allows either and
+they differ in ways that matter here: on 2.x, `pct_change` forward-fills a missing price
+by default, which silently suppressed the engine's missing-price warning. One test checks
+that the warning still fires.
 
 For a step-by-step walkthrough of checking the tests and the real pipeline yourself, see
 [VERIFYING.md](VERIFYING.md).

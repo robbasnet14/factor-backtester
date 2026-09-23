@@ -22,7 +22,7 @@ from src.analytics.metrics import (
 )
 from src.analytics.plots import plot_equity_curve
 from src.backtest.costs import build_costs
-from src.backtest.engine import run_backtest
+from src.backtest.engine import forward_returns_from_prices, run_backtest
 from src.backtest.portfolio import decile_portfolios, tradable_on_rebalance
 from src.backtest.validation import walk_forward_backtest
 from src.data.loader import load_fundamentals, load_prices
@@ -121,16 +121,8 @@ def main():
         composite, n_deciles=port_cfg["n_deciles"], long_short=port_cfg["long_short"], tradable=tradable
     )
 
-    # Forward monthly returns: the return earned FROM each rebalance date TO
-    # the next one, so weights decided at t never see the return that produced them.
-    # fill_method=None: pandas 2.x forward-fills gaps by default, which would turn a
-    # delisted name's missing return into a silent 0% before the engine sees it.
     monthly_prices = daily_prices.resample("ME").last()
-    forward_returns = monthly_prices.pct_change(fill_method=None).shift(-1)
-    # The final rebalance date has no realized forward return yet (data just
-    # ends) — drop it rather than let the engine score it as a 0% period,
-    # which would charge turnover cost for a position with no offsetting P&L.
-    forward_returns = forward_returns.dropna(how="all")
+    forward_returns = forward_returns_from_prices(monthly_prices)
 
     costs = build_costs(cost_cfg, daily_prices, weights.index)
     print(f"Cost model: {cost_cfg.get('cost_model', 'flat')} ({cost_cfg['bps_per_trade']} bps base)")

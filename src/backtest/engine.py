@@ -9,6 +9,22 @@ from src.backtest.costs import apply_costs
 _logger = logging.getLogger(__name__)
 
 
+def forward_returns_from_prices(monthly_prices: pd.DataFrame) -> pd.DataFrame:
+    """Forward monthly returns: row `t` is the return earned FROM rebalance
+    date `t` TO the next one, so weights decided at `t` never see the return
+    that produced them.
+
+    A gap stays NaN. `fill_method=None` matters: pandas 2.x's default
+    forward-fills a missing price, which turns a held name with no price
+    into a silent 0% here — the engine then never sees the gap and never
+    warns about it (that's how untradable holdings went unnoticed on
+    pandas 2.x). The final rebalance date has no realized forward return
+    yet, so an all-NaN row is dropped rather than scored as a 0% period
+    that would still be charged turnover cost.
+    """
+    return monthly_prices.pct_change(fill_method=None).shift(-1).dropna(how="all")
+
+
 def run_backtest(
     weights: pd.DataFrame,
     forward_returns: pd.DataFrame,
@@ -18,8 +34,8 @@ def run_backtest(
     """Combine target weights with forward returns, net of costs.
 
     No look-ahead: `forward_returns.loc[t]` must already be the return
-    earned FROM rebalance date `t` TO the next one (e.g.
-    `monthly_price.pct_change().shift(-1)`), never the return that produced
+    earned FROM rebalance date `t` TO the next one (see
+    `forward_returns_from_prices`), never the return that produced
     the score `weights.loc[t]` was decided on. Pairing weights with
     contemporaneous (unshifted) returns here would silently reintroduce
     look-ahead bias.
@@ -44,13 +60,14 @@ def run_backtest(
 
     Documented limitation: if `prices` isn't supplied, or a ticker has no
     recorded price at all to exit at, that cell still falls back to a 0%
-    assumption with a warning. Weights built with a tradability mask (see
-    `portfolio.tradable_on_rebalance`) never hold a name without a price at
-    `t`, so in the main pipeline this only fires if the mask is skipped. There is nothing to exit at in that case, and
+    assumption with a warning. There is nothing to exit at in that case, and
     the true delisting outcome (a merger payout, a bankruptcy wipeout, or
     anything between) is genuinely unknown from price data alone — this is
     not modeled, and the warning is how that limitation stays visible
-    instead of silently understating risk.
+    instead of silently understating risk. Weights built with a tradability
+    mask (see `portfolio.tradable_on_rebalance`) never hold a name without a
+    price at `t`, so in the main pipeline this only fires if the mask is
+    skipped.
 
     `cost_bps` is either one flat cost for every trade or a (date x ticker)
     frame of per-name costs — see `costs.apply_costs` / `costs.build_costs`.

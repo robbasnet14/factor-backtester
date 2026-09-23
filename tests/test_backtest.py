@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from src.backtest.costs import apply_costs
-from src.backtest.engine import run_backtest
+from src.backtest.engine import forward_returns_from_prices, run_backtest
 from src.backtest.portfolio import decile_portfolios, tradable_on_rebalance
 
 DATES = pd.date_range("2020-01-31", periods=3, freq="ME")
@@ -206,4 +206,19 @@ def test_name_that_delists_mid_holding_period_exits_at_last_trade_and_is_not_hel
     assert forward_returns.loc[DATES[0], "MID"] == pytest.approx(80.0 / 100.0 - 1.0)  # exit at last trade
     assert weights.loc[DATES[1], "MID"] == 0.0       # no price on February's rebalance date: not held
     assert weights.loc[DATES[1], "T9"] == pytest.approx(1.0)
+
+
+def test_price_gap_stays_nan_in_forward_returns_so_the_engine_warns():
+    # GAP is held on a rebalance date it has no price for (the untradable-holding case).
+    # With pandas 2.x's default forward-fill the gap would become a silent 0% and the
+    # engine's warning would never fire — the diagnostic, not just the number, is under test.
+    monthly = pd.DataFrame({"A": [100.0, 110.0, 121.0], "GAP": [50.0, np.nan, 55.0]}, index=DATES)
+    forward_returns = forward_returns_from_prices(monthly)
+    weights = pd.DataFrame({"A": [0.0, 0.0], "GAP": [0.0, 1.0]}, index=DATES[:2])
+
+    assert np.isnan(forward_returns.loc[DATES[0], "GAP"])
+    assert np.isnan(forward_returns.loc[DATES[1], "GAP"])
+    assert DATES[2] not in forward_returns.index  # no realized forward return after the last date
+    with pytest.warns(UserWarning, match="no exit price"):
+        run_backtest(weights, forward_returns, cost_bps=0, prices=monthly)
 

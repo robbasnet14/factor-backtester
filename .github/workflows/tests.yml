@@ -6,7 +6,15 @@ on:
 
 jobs:
   pytest:
+    name: pytest (pandas ${{ matrix.pandas }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # requirements.txt allows both pandas 2.x and 3.x, and they differ in ways
+      # that matter here (e.g. pct_change forward-fills gaps by default on 2.x,
+      # which silenced the engine's missing-price warning). Test both.
+      matrix:
+        pandas: ["2.2.*", "3.*"]
     steps:
       - uses: actions/checkout@v4
 
@@ -16,10 +24,14 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt "pandas==${{ matrix.pandas }}"
 
-      # The live SEC EDGAR integration check is excluded: CI should not depend
-      # on SEC's availability or rate limits. Everything else is network-mocked.
+      - name: Show pandas version
+        run: python -c "import pandas; print('pandas', pandas.__version__)"
+
+      # The live SEC EDGAR integration check is excluded on every matrix leg: CI
+      # should not depend on SEC's availability or rate limits. Everything else
+      # is network-mocked.
       - name: Run tests
         run: >
           python -m pytest tests/ -v
