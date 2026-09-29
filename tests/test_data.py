@@ -19,9 +19,11 @@ import pytest
 import requests
 import yfinance as yf
 
+from src.data import loader
 from src.data.loader import default_price_providers, load_fundamentals, load_prices
 from src.data.providers import sec_edgar
 from src.data.universe import build_universe
+from tests.fakes import FakeFundamentalsProvider, FakePriceProvider
 
 
 class _FakeResponse:
@@ -44,15 +46,31 @@ def _fake_yf_frame(dates: list[str], closes: list[float], symbol: str) -> pd.Dat
     return pd.DataFrame([[c] for c in closes], index=index, columns=columns)
 
 
-def test_load_prices_fetches_caches_and_slices(monkeypatch, tmp_path):
-    calls = []
+JAN_PRICES = {"2020-01-02": 10.0, "2020-01-03": 10.5, "2020-01-06": 11.0}
 
-    def fake_download(symbol, start=None, end=None, auto_adjust=None, progress=None, threads=None):
-        calls.append(symbol)
-        return _fake_yf_frame(["2020-01-02", "2020-01-03", "2020-01-06"], [10.0, 10.5, 11.0], symbol)
 
-    monkeypatch.setattr(yf, "download", fake_download)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
+@pytest.fixture
+def default_chain(monkeypatch):
+    """Replace the default price chain (normally Yahoo, then Tiingo) with fakes,
+    so loader tests exercise default-chain behaviour — its cache paths and
+    skiplist — without any network layer."""
+    def install(*providers):
+        monkeypatch.setattr(loader, "default_price_providers", lambda: tuple(providers))
+    return install
+
+
+@pytest.fixture
+def default_fundamentals(monkeypatch):
+    """Replace the default fundamentals provider (normally SEC EDGAR) with a fake."""
+    def install(provider):
+        monkeypatch.setattr(loader, "default_fundamentals_provider", lambda cache_dir: provider)
+    return install
+
+
+def test_load_prices_fetches_caches_and_slices(default_chain, tmp_path):
+    provider = FakePriceProvider("yfinance", {"AAPL": JAN_PRICES})
+    default_chain(provider)
+    calls = provider.calls
 
     df = load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
 
@@ -66,17 +84,12 @@ def test_load_prices_fetches_caches_and_slices(monkeypatch, tmp_path):
     assert len(calls) == 1
 
 
-def test_load_prices_cache_hit_when_data_starts_after_requested_start(monkeypatch, tmp_path):
+def test_load_prices_cache_hit_when_data_starts_after_requested_start(default_chain, tmp_path):
     # 2020-01-01 is a market holiday, so the data can never start on the requested
     # date — the same shape as a name listed (or delisted) partway through the range.
-    calls = []
-
-    def fake_download(symbol, **kwargs):
-        calls.append(symbol)
-        return _fake_yf_frame(["2020-01-02", "2020-01-03", "2020-01-06"], [10.0, 10.5, 11.0], symbol)
-
-    monkeypatch.setattr(yf, "download", fake_download)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
+    provider = FakePriceProvider("yfinance", {"AAPL": JAN_PRICES})
+    default_chain(provider)
+    calls = provider.calls
 
     load_prices(["aapl"], "2020-01-01", "2020-01-06", cache_dir=str(tmp_path))
     df = load_prices(["aapl"], "2020-01-01", "2020-01-06", cache_dir=str(tmp_path))
@@ -113,15 +126,10 @@ def test_load_prices_cached_delisted_name_is_not_refetched_when_yahoo_has_nothin
     assert sleeps == []  # a cache hit makes no request, so no polite delay either
 
 
-def test_load_prices_refetches_when_request_extends_past_recorded_range(monkeypatch, tmp_path):
-    calls = []
-
-    def fake_download(symbol, **kwargs):
-        calls.append(symbol)
-        return _fake_yf_frame(["2020-01-02", "2020-01-03", "2020-01-06"], [10.0, 10.5, 11.0], symbol)
-
-    monkeypatch.setattr(yf, "download", fake_download)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
+def test_load_prices_refetches_when_request_extends_past_recorded_range(default_chain, tmp_path):
+    provider = FakePriceProvider("yfinance", {"AAPL": JAN_PRICES})
+    default_chain(provider)
+    calls = provider.calls
 
     load_prices(["aapl"], "2020-01-01", "2020-01-06", cache_dir=str(tmp_path))
     load_prices(["aapl"], "2020-01-01", "2020-01-10", cache_dir=str(tmp_path))
@@ -147,18 +155,10 @@ def test_load_prices_maps_dot_ticker_to_yahoo_dash_symbol(monkeypatch, tmp_path)
     assert set(df["ticker"]) == {"BRK.B"}    # but the original spelling comes back to the caller
 
 
-def test_load_prices_skips_ticker_with_no_data(monkeypatch, tmp_path):
-    # BADTICKER has nothing on yfinance NOR Tiingo (no key -> fallback fails fast)
-    # so this must resolve as "truly unavailable" without ever touching a real network.
-    monkeypatch.delenv("TIINGO_KEY", raising=False)
-
-    def fake_download(symbol, **kwargs):
-        if symbol == "BADTICKER":
-            return pd.DataFrame()  # yfinance's response for an unknown/delisted symbol
-        return _fake_yf_frame(["2020-01-02"], [10.0], symbol)
-
-    monkeypatch.setattr(yf, "download", fake_download)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
+def test_load_prices_skips_ticker_with_no_data(default_chain, tmp_path):
+    # BADTICKER is unknown to every provider in the chain, so it must resolve
+    # as "truly unavailable".
+    default_chain(FakePriceProvider("yfinance", {"AAPL": {"2020-01-02": 10.0}}))
 
     with pytest.warns(UserWarning):
         df = load_prices(["aapl", "badticker"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
@@ -201,21 +201,14 @@ def test_load_prices_gives_up_after_max_retries(monkeypatch, tmp_path):
     assert df.empty
 
 
-def test_load_prices_skiplists_unavailable_ticker_and_skips_network_on_rerun(monkeypatch, tmp_path):
-    monkeypatch.delenv("TIINGO_KEY", raising=False)
-    calls = {"n": 0}
-
-    def no_data(symbol, **kwargs):
-        calls["n"] += 1
-        return pd.DataFrame()  # the source answered: it has nothing for this ticker
-
-    monkeypatch.setattr(yf, "download", no_data)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
+def test_load_prices_skiplists_unavailable_ticker_and_skips_network_on_rerun(default_chain, tmp_path):
+    provider = FakePriceProvider("yfinance")  # answers, but has nothing for this ticker
+    default_chain(provider)
 
     with pytest.warns(UserWarning):
         df = load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
     assert df.empty
-    calls_after_first = calls["n"]
+    calls_after_first = len(provider.calls)
     assert calls_after_first > 0
 
     skiplist_path = tmp_path / "unavailable_prices.json"
@@ -226,38 +219,31 @@ def test_load_prices_skiplists_unavailable_ticker_and_skips_network_on_rerun(mon
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         df2 = load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
-    assert calls["n"] == calls_after_first  # no additional yfinance calls
+    assert len(provider.calls) == calls_after_first  # no additional provider calls
     assert df2.empty
 
     # force_refresh=True bypasses the skiplist and re-attempts the network call.
     with pytest.warns(UserWarning):
         load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path), force_refresh=True)
-    assert calls["n"] > calls_after_first
+    assert len(provider.calls) > calls_after_first
 
 
-def test_load_prices_never_skiplists_a_ticker_because_a_provider_failed(monkeypatch, tmp_path):
+def test_load_prices_never_skiplists_a_ticker_because_a_provider_failed(default_chain, tmp_path):
     # A transport failure means "couldn't find out", not "doesn't exist": the
     # ticker must be retried next run, never remembered as unavailable.
-    monkeypatch.delenv("TIINGO_KEY", raising=False)
-    calls = {"n": 0}
-
-    def always_fails(symbol, **kwargs):
-        calls["n"] += 1
-        raise ConnectionError("simulated persistent network error")
-
-    monkeypatch.setattr(yf, "download", always_fails)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
+    provider = FakePriceProvider("yfinance", error=ConnectionError("simulated persistent network error"))
+    default_chain(provider)
 
     with pytest.warns(UserWarning) as caught:
         load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
     assert any("retried next run" in str(w.message) for w in caught)
-    calls_after_first = calls["n"]
+    calls_after_first = len(provider.calls)
 
     skiplist_path = tmp_path / "unavailable_prices.json"
     assert not skiplist_path.exists() or "AAPL" not in json.loads(skiplist_path.read_text())
     with pytest.warns(UserWarning):
         load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
-    assert calls["n"] > calls_after_first  # asked again on the next run
+    assert len(provider.calls) > calls_after_first  # asked again on the next run
 
 
 def test_default_chain_uses_tiingo_only_when_a_key_is_set(monkeypatch):
@@ -423,14 +409,8 @@ def test_load_fundamentals_skips_ticker_with_no_cik(monkeypatch, tmp_path):
     assert df.empty
 
 
-def test_load_fundamentals_never_caches_an_empty_result_as_parquet(monkeypatch, tmp_path):
-    def fake_get(url, headers=None, timeout=None):
-        if "company_tickers.json" in url:
-            return _FakeResponse(json_data={"0": {"cik_str": 1, "ticker": "AAA", "title": "AAA Inc"}})
-        return _FakeResponse(json_data={"facts": {"us-gaap": {}}})  # always empty
-
-    monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
+def test_load_fundamentals_never_caches_an_empty_result_as_parquet(default_fundamentals, tmp_path):
+    default_fundamentals(FakeFundamentalsProvider())  # always empty
 
     with pytest.warns(UserWarning):
         load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
@@ -438,21 +418,13 @@ def test_load_fundamentals_never_caches_an_empty_result_as_parquet(monkeypatch, 
     assert not (tmp_path / "fundamentals" / "AAA.parquet").exists()  # a failed fetch must not be cached
 
 
-def test_load_fundamentals_skiplists_permanent_failure_and_skips_network_on_rerun(monkeypatch, tmp_path):
-    calls = {"n": 0}
-
-    def fake_get(url, headers=None, timeout=None):
-        if "company_tickers.json" in url:
-            return _FakeResponse(json_data={"0": {"cik_str": 1, "ticker": "AAA", "title": "AAA Inc"}})
-        calls["n"] += 1
-        return _FakeResponse(json_data={"facts": {"us-gaap": {}}})  # permanently empty -> no usable EPS
-
-    monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
+def test_load_fundamentals_skiplists_permanent_failure_and_skips_network_on_rerun(default_fundamentals, tmp_path):
+    provider = FakeFundamentalsProvider()  # answers, permanently empty
+    default_fundamentals(provider)
 
     with pytest.warns(UserWarning):
         load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
-    assert calls["n"] == 1
+    assert len(provider.calls) == 1
     skiplist_path = tmp_path / "unavailable_fundamentals.json"
     assert skiplist_path.exists()
     assert "AAA" in json.loads(skiplist_path.read_text())
@@ -462,13 +434,13 @@ def test_load_fundamentals_skiplists_permanent_failure_and_skips_network_on_reru
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         df = load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
-    assert calls["n"] == 1
+    assert len(provider.calls) == 1
     assert df.empty
 
     # force_refresh=True bypasses the skiplist and re-attempts the network call.
     with pytest.warns(UserWarning):
         load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), force_refresh=True)
-    assert calls["n"] == 2
+    assert len(provider.calls) == 2
 
 
 def test_load_fundamentals_dedupes_multiple_periods_sharing_one_filing_date(monkeypatch, tmp_path):
@@ -511,11 +483,13 @@ def test_load_fundamentals_dedupes_multiple_periods_sharing_one_filing_date(monk
     assert matches.iloc[0]["earnings"] == pytest.approx(4.0)
 
 
-def test_resolve_cik_uses_manual_overrides_for_known_sec_gaps():
+def test_resolve_cik_uses_manual_overrides_for_known_sec_gaps(tmp_path):
     # MMC and WBA are real tickers SEC's own company_tickers.json omits/aliases
-    # (see CIK_OVERRIDES) — they must resolve even from an otherwise-empty map.
-    ticker_to_cik = {"AAPL": 320193}
-    resolved = {t: sec_edgar.resolve_cik(t, {**ticker_to_cik, **sec_edgar.CIK_OVERRIDES}) for t in ["AAPL", "MMC", "WBA"]}
+    # (see CIK_OVERRIDES) — they must resolve even from a map that lacks them.
+    cik_map = tmp_path / "sec_company_tickers.json"
+    cik_map.write_text(json.dumps({"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}}))
+    provider = sec_edgar.SecEdgarProvider(cik_map)
+    resolved = {t: provider.resolve_cik(t) for t in ["AAPL", "MMC", "WBA"]}
     assert resolved == {"AAPL": 320193, "MMC": 62709, "WBA": 1618921}
 
 
@@ -640,35 +614,11 @@ def test_load_fundamentals_logs_when_sec_returns_no_facts(monkeypatch, tmp_path,
     assert any("no us-gaap facts" in r.message for r in caplog.records)
 
 
-def test_load_fundamentals_date_filter_excludes_rows_lagged_past_end(monkeypatch, tmp_path):
-    company_tickers = {"0": {"cik_str": 1, "ticker": "AAA", "title": "AAA Inc"}}
-    company_facts = {
-        "facts": {
-            "us-gaap": {
-                "EarningsPerShareDiluted": {
-                    "units": {
-                        "USD/shares": [
-                            {"end": "2019-03-31", "start": "2019-01-01", "filed": "2019-05-01", "val": 1.0, "form": "10-Q"},
-                            {"end": "2019-06-30", "start": "2019-04-01", "filed": "2019-08-01", "val": 1.0, "form": "10-Q"},
-                            {"end": "2019-09-30", "start": "2019-07-01", "filed": "2019-11-01", "val": 1.0, "form": "10-Q"},
-                            {"end": "2019-12-31", "start": "2019-10-01", "filed": "2020-01-01", "val": 1.0, "form": "10-K"},
-                            {"end": "2020-03-31", "start": "2020-01-01", "filed": "2020-02-01", "val": 1.0, "form": "10-Q"},
-                        ]
-                    }
-                },
-                "NetIncomeLoss": {"units": {"USD": []}},
-                "StockholdersEquity": {"units": {"USD": []}},
-            }
-        }
-    }
-
-    def fake_get(url, headers=None, timeout=None):
-        if "company_tickers.json" in url:
-            return _FakeResponse(json_data=company_tickers)
-        return _FakeResponse(json_data=company_facts)
-
-    monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
+def test_load_fundamentals_date_filter_excludes_rows_lagged_past_end(default_fundamentals, tmp_path):
+    report_dates = ["2019-05-01", "2019-08-01", "2019-11-01", "2020-01-01", "2020-02-01"]
+    default_fundamentals(FakeFundamentalsProvider(rows={
+        "AAA": [{"report_date": d, "earnings": 4.0, "book_value": 10.0, "roe": 0.1} for d in report_dates]
+    }))
 
     # lag_days=10: the 2020-01-01 filing lands at date=2020-01-11 (<= end, kept);
     # the 2020-02-01 filing lands at date=2020-02-11 (> end, must be excluded).

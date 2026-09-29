@@ -47,6 +47,10 @@ def default_price_providers() -> tuple[PriceProvider, ...]:
     return (YahooProvider(),)
 
 
+def default_fundamentals_provider(cache_dir: str) -> FundamentalsProvider:
+    return SecEdgarProvider(Path(cache_dir) / "sec_company_tickers.json")
+
+
 def load_prices(
     tickers: list[str],
     start: str,
@@ -222,7 +226,7 @@ def load_fundamentals(
         root = _custom_cache_root(cache_dir, (provider,))
     else:
         root = Path(cache_dir)
-        provider = SecEdgarProvider(root / "sec_company_tickers.json")
+        provider = default_fundamentals_provider(cache_dir)
 
     start_ts, end_ts = pd.Timestamp(start), pd.Timestamp(end)
     cache = FundamentalsCache(root)
