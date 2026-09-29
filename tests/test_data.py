@@ -19,7 +19,7 @@ import pytest
 import requests
 import yfinance as yf
 
-from src.data.loader import load_fundamentals, load_prices
+from src.data.loader import default_price_providers, load_fundamentals, load_prices
 from src.data.providers import sec_edgar
 from src.data.universe import build_universe
 
@@ -205,11 +205,11 @@ def test_load_prices_skiplists_unavailable_ticker_and_skips_network_on_rerun(mon
     monkeypatch.delenv("TIINGO_KEY", raising=False)
     calls = {"n": 0}
 
-    def always_fails(symbol, **kwargs):
+    def no_data(symbol, **kwargs):
         calls["n"] += 1
-        raise ConnectionError("simulated persistent network error")
+        return pd.DataFrame()  # the source answered: it has nothing for this ticker
 
-    monkeypatch.setattr(yf, "download", always_fails)
+    monkeypatch.setattr(yf, "download", no_data)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.warns(UserWarning):
@@ -233,6 +233,39 @@ def test_load_prices_skiplists_unavailable_ticker_and_skips_network_on_rerun(mon
     with pytest.warns(UserWarning):
         load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path), force_refresh=True)
     assert calls["n"] > calls_after_first
+
+
+def test_load_prices_never_skiplists_a_ticker_because_a_provider_failed(monkeypatch, tmp_path):
+    # A transport failure means "couldn't find out", not "doesn't exist": the
+    # ticker must be retried next run, never remembered as unavailable.
+    monkeypatch.delenv("TIINGO_KEY", raising=False)
+    calls = {"n": 0}
+
+    def always_fails(symbol, **kwargs):
+        calls["n"] += 1
+        raise ConnectionError("simulated persistent network error")
+
+    monkeypatch.setattr(yf, "download", always_fails)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+
+    with pytest.warns(UserWarning) as caught:
+        load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
+    assert any("retried next run" in str(w.message) for w in caught)
+    calls_after_first = calls["n"]
+
+    skiplist_path = tmp_path / "unavailable_prices.json"
+    assert not skiplist_path.exists() or "AAPL" not in json.loads(skiplist_path.read_text())
+    with pytest.warns(UserWarning):
+        load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
+    assert calls["n"] > calls_after_first  # asked again on the next run
+
+
+def test_default_chain_uses_tiingo_only_when_a_key_is_set(monkeypatch):
+    monkeypatch.delenv("TIINGO_KEY", raising=False)
+    assert [p.name for p in default_price_providers()] == ["yfinance"]
+
+    monkeypatch.setenv("TIINGO_KEY", "dummy")
+    assert [p.name for p in default_price_providers()] == ["yfinance", "Tiingo"]
 
 
 def test_load_prices_falls_back_to_tiingo_when_yfinance_empty(monkeypatch, tmp_path, caplog):

@@ -13,6 +13,7 @@ chain gets its own cache namespace and doesn't use the default chain's
 skiplist, since what the default sources lack says nothing about yours.
 """
 import logging
+import os
 import re
 import warnings
 from collections.abc import Sequence
@@ -37,7 +38,13 @@ _UNAVAILABLE_FUNDAMENTALS_FILENAME = "unavailable_fundamentals.json"
 
 
 def default_price_providers() -> tuple[PriceProvider, ...]:
-    return (YahooProvider(), TiingoProvider())
+    """Yahoo Finance, then Tiingo if `TIINGO_KEY` is set. Without a key
+    Tiingo can't answer for any ticker, so it's left out rather than failing
+    on every name Yahoo doesn't have."""
+    if os.environ.get("TIINGO_KEY"):
+        return (YahooProvider(), TiingoProvider())
+    _logger.info("TIINGO_KEY is not set; using yfinance only (no Tiingo fallback for delisted names)")
+    return (YahooProvider(),)
 
 
 def load_prices(
@@ -52,19 +59,23 @@ def load_prices(
     """Load daily adjusted-close prices for `tickers` between `start` and `end`.
 
     Each ticker goes to the providers in `providers` order (default: Yahoo
-    Finance, then Tiingo) and the first non-empty answer wins. A provider
-    that raises is warned about and the next one is tried. All providers
+    Finance, then Tiingo when `TIINGO_KEY` is set) and the first non-empty
+    answer wins. A provider that raises is warned about and the next one is
+    tried. All providers
     share one per-ticker Parquet cache in `cache_dir/prices/`, keyed by the
     ORIGINAL ticker spelling — a re-run reads from cache regardless of which
     provider originally supplied it.
 
-    With the default chain, a ticker no provider has data for is recorded in
-    `cache_dir/unavailable_prices.json` and, on future calls, skipped with no
-    network call at all — re-fetching a name that's confirmed gone from
+    With the default chain, a ticker every provider answered "no data" for
+    is recorded in `cache_dir/unavailable_prices.json` and, on future calls,
+    skipped with no network call at all — re-fetching a name that's confirmed gone from
     every provider on every run wastes real time on a large universe. Pass
     `force_refresh=True` to re-check every ticker (a previously-unavailable
     one that now succeeds is removed from the skiplist; one that still fails
-    stays on it) — or just delete the file to reset it entirely.
+    stays on it) — or just delete the file to reset it entirely. A ticker
+    that came up empty only because a provider failed (network error, rate
+    limit, missing key) is never recorded: that's "unknown", not
+    "unavailable", and it's retried next run.
 
     The date range already requested for each cached ticker is recorded in
     `cache_dir/price_cache_ranges.json`, so a later call inside that range is
@@ -91,7 +102,7 @@ def load_prices(
     skiplist_changed = False
 
     frames = []
-    source_counts = {**{p.name: 0 for p in chain}, "unavailable": 0, "skiplisted": 0}
+    source_counts = {**{p.name: 0 for p in chain}, "unavailable": 0, "failed": 0, "skiplisted": 0}
 
     for ticker in tickers:
         upper = ticker.upper()
@@ -101,8 +112,8 @@ def load_prices(
 
         series, source = _first_provider_with_data(chain, cache, ticker, start_ts, end_ts)
         if series is None:
-            source_counts["unavailable"] += 1
-            if not custom:
+            source_counts[source] += 1
+            if source == "unavailable" and not custom:
                 skiplist_changed = skiplist_changed or upper not in skiplist
                 skiplist[upper] = pd.Timestamp.now("UTC").isoformat()
             continue
@@ -119,9 +130,10 @@ def load_prices(
     cache.save()
 
     _logger.info(
-        "load_prices summary: %s, %d unavailable, %d skiplisted",
+        "load_prices summary: %s, %d unavailable, %d failed, %d skiplisted",
         ", ".join(f"{source_counts[p.name]} from {p.name}" for p in chain),
         source_counts["unavailable"],
+        source_counts["failed"],
         source_counts["skiplisted"],
     )
 
@@ -133,29 +145,33 @@ def load_prices(
 
 def _first_provider_with_data(
     chain: tuple[PriceProvider, ...], cache: PriceCache, ticker: str, start_ts: pd.Timestamp, end_ts: pd.Timestamp
-) -> tuple[pd.DataFrame | None, str | None]:
-    """Walk the chain in order; return (series, provider name) from the first
-    provider with data, or (None, None) if none has any."""
+) -> tuple[pd.DataFrame | None, str]:
+    """Walk the chain in order. Returns (series, provider name) from the first
+    provider with data; otherwise (None, "unavailable") if every provider
+    answered "no data", or (None, "failed") if any of them raised."""
+    failed = []
     for i, provider in enumerate(chain):
-        is_last = i == len(chain) - 1
         try:
             series = cache.load(provider, ticker, start_ts, end_ts)
         except Exception as e:
-            if is_last:
-                earlier = ", ".join(p.name for p in chain[:i])
-                reason = f"no data from {earlier}, and {provider.name} failed" if earlier else f"{provider.name} failed"
-                warnings.warn(f"Skipping {ticker}: {reason} ({e})")
-                return None, None
-            warnings.warn(f"{provider.name} error for {ticker}: {e}; trying {chain[i + 1].name}")
+            failed.append(provider.name)
+            next_step = f"trying {chain[i + 1].name}" if i < len(chain) - 1 else "no provider left"
+            warnings.warn(f"{provider.name} error for {ticker}: {e}; {next_step}")
             continue
         if not series.empty:
             if i > 0:
                 _logger.info("%s: served from %s fallback (%s had no data)", ticker, provider.name, chain[i - 1].name)
             return series, provider.name
 
+    if failed:
+        warnings.warn(
+            f"Skipping {ticker} this run: {' and '.join(failed)} failed and no other provider had data; "
+            "not marking it unavailable, so it's retried next run."
+        )
+        return None, "failed"
     names = " or ".join(p.name for p in chain)
     warnings.warn(f"No price data returned for {ticker} from {names} (possibly delisted everywhere); skipping.")
-    return None, None
+    return None, "unavailable"
 
 
 def load_fundamentals(

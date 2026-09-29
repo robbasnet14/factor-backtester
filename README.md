@@ -104,14 +104,14 @@ src/
   backtest/   portfolio construction, cost model, engine, walk-forward
   analytics/  performance metrics, coverage report, equity-curve chart
 scripts/run_backtest.py   the entry point that wires it all together
-tests/        82 tests, network-mocked
+tests/        84 tests, network-mocked
 config.yaml   every knob (universe, dates, costs, factors, validation)
 ```
 
 ## Reproducing this
 
 Prices come from Yahoo Finance (no key). Fundamentals come from SEC EDGAR (no key, but it
-wants a descriptive User-Agent, which is set in the loader). A Tiingo key is optional and
+wants a descriptive User-Agent, which is set in `src/data/providers/sec_edgar.py`). A Tiingo key is optional and
 only used as a price fallback for a few delisted names — set `TIINGO_KEY` if you have one.
 
 ```bash
@@ -172,7 +172,7 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
 python -m pytest tests/
 ```
 
-82 tests, all network-mocked except one opt-in live SEC integration check. They cover the
+84 tests, all network-mocked except one opt-in live SEC integration check. They cover the
 easy-to-get-wrong stuff: momentum's skip-month, the point-in-time fundamentals lag, the
 delisted-name universe, never holding a name on a date it didn't trade, turnover cost math, the yfinance→Tiingo fallback, and — the one I
 care about most — a test proving the engine trades on *forward* returns, never
