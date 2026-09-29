@@ -17,8 +17,10 @@ takes this engine's linear factor composite as the baseline and asks whether a
 pre-registered, walk-forward, cost-aware machine-learning model can beat it. (Short
 answer: no, not on the pre-registered terms — the apparent edge traces to a single
 12-month fold and doesn't survive a proper multiple-testing correction.) That repo
-vendors a snapshot of this engine at commit `eac614c`; this repo remains the
-maintained, independently-evolving version.
+vendors a snapshot of this engine's code as of commit `31b92b4` here (brought in by its
+own commit `eac614c`); this repo remains the maintained, independently-evolving version.
+The snapshot predates the tradability fix and the per-name cost model, so its baseline
+numbers differ slightly from the ones below.
 
 ## What it does
 
