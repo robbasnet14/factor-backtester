@@ -9,3 +9,4 @@ data_cache/
 .DS_Store
 outputs/*
 !outputs/equity_curve_oos.png
+.coverage
