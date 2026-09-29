@@ -12,6 +12,14 @@ no peeking at the future, no quietly dropping companies that went bankrupt, no
 pretending trading is free. Honestly, most of the work went into *not* fooling myself,
 which turns out to be the hard part of backtesting.
 
+**Used in a follow-up study:** [ml-vs-linear-factors](https://github.com/robbasnet14/ml-vs-linear-factors)
+takes this engine's linear factor composite as the baseline and asks whether a
+pre-registered, walk-forward, cost-aware machine-learning model can beat it. (Short
+answer: no, not on the pre-registered terms — the apparent edge traces to a single
+12-month fold and doesn't survive a proper multiple-testing correction.) That repo
+vendors a snapshot of this engine at commit `eac614c`; this repo remains the
+maintained, independently-evolving version.
+
 ## What it does
 
 - Rebuilds the S&P 500 as it actually existed on each date, delisted names included,
