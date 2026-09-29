@@ -11,14 +11,16 @@ whatever happens to be in the host environment.
 """
 import json
 import logging
+import time
 import warnings
 
 import pandas as pd
 import pytest
 import requests
+import yfinance as yf
 
-from src.data import loader as loader_module
 from src.data.loader import load_fundamentals, load_prices
+from src.data.providers import sec_edgar
 from src.data.universe import build_universe
 
 
@@ -49,8 +51,8 @@ def test_load_prices_fetches_caches_and_slices(monkeypatch, tmp_path):
         calls.append(symbol)
         return _fake_yf_frame(["2020-01-02", "2020-01-03", "2020-01-06"], [10.0, 10.5, 11.0], symbol)
 
-    monkeypatch.setattr(loader_module.yf, "download", fake_download)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(yf, "download", fake_download)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
 
@@ -73,8 +75,8 @@ def test_load_prices_cache_hit_when_data_starts_after_requested_start(monkeypatc
         calls.append(symbol)
         return _fake_yf_frame(["2020-01-02", "2020-01-03", "2020-01-06"], [10.0, 10.5, 11.0], symbol)
 
-    monkeypatch.setattr(loader_module.yf, "download", fake_download)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(yf, "download", fake_download)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     load_prices(["aapl"], "2020-01-01", "2020-01-06", cache_dir=str(tmp_path))
     df = load_prices(["aapl"], "2020-01-01", "2020-01-06", cache_dir=str(tmp_path))
@@ -99,8 +101,8 @@ def test_load_prices_cached_delisted_name_is_not_refetched_when_yahoo_has_nothin
         calls.append(symbol)
         return pd.DataFrame()
 
-    monkeypatch.setattr(loader_module.yf, "download", fake_download)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr(yf, "download", fake_download)
+    monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
 
     first = load_prices(["GONE"], "2020-01-01", "2020-01-10", cache_dir=str(tmp_path))
     sleeps.clear()
@@ -118,8 +120,8 @@ def test_load_prices_refetches_when_request_extends_past_recorded_range(monkeypa
         calls.append(symbol)
         return _fake_yf_frame(["2020-01-02", "2020-01-03", "2020-01-06"], [10.0, 10.5, 11.0], symbol)
 
-    monkeypatch.setattr(loader_module.yf, "download", fake_download)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(yf, "download", fake_download)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     load_prices(["aapl"], "2020-01-01", "2020-01-06", cache_dir=str(tmp_path))
     load_prices(["aapl"], "2020-01-01", "2020-01-10", cache_dir=str(tmp_path))
@@ -136,8 +138,8 @@ def test_load_prices_maps_dot_ticker_to_yahoo_dash_symbol(monkeypatch, tmp_path)
         seen_symbols.append(symbol)
         return _fake_yf_frame(["2020-01-02"], [10.0], symbol)
 
-    monkeypatch.setattr(loader_module.yf, "download", fake_download)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(yf, "download", fake_download)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = load_prices(["BRK.B"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
 
@@ -155,8 +157,8 @@ def test_load_prices_skips_ticker_with_no_data(monkeypatch, tmp_path):
             return pd.DataFrame()  # yfinance's response for an unknown/delisted symbol
         return _fake_yf_frame(["2020-01-02"], [10.0], symbol)
 
-    monkeypatch.setattr(loader_module.yf, "download", fake_download)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(yf, "download", fake_download)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.warns(UserWarning):
         df = load_prices(["aapl", "badticker"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
@@ -173,8 +175,8 @@ def test_load_prices_retries_transient_network_error(monkeypatch, tmp_path):
             raise ConnectionError("simulated transient network error")
         return _fake_yf_frame(["2020-01-02"], [10.0], symbol)
 
-    monkeypatch.setattr(loader_module.yf, "download", flaky_download)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(yf, "download", flaky_download)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
 
@@ -190,8 +192,8 @@ def test_load_prices_gives_up_after_max_retries(monkeypatch, tmp_path):
     def always_fails(symbol, **kwargs):
         raise ConnectionError("simulated persistent network error")
 
-    monkeypatch.setattr(loader_module.yf, "download", always_fails)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(yf, "download", always_fails)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.warns(UserWarning):
         df = load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
@@ -207,8 +209,8 @@ def test_load_prices_skiplists_unavailable_ticker_and_skips_network_on_rerun(mon
         calls["n"] += 1
         raise ConnectionError("simulated persistent network error")
 
-    monkeypatch.setattr(loader_module.yf, "download", always_fails)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(yf, "download", always_fails)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.warns(UserWarning):
         df = load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
@@ -235,7 +237,7 @@ def test_load_prices_skiplists_unavailable_ticker_and_skips_network_on_rerun(mon
 
 def test_load_prices_falls_back_to_tiingo_when_yfinance_empty(monkeypatch, tmp_path, caplog):
     monkeypatch.setenv("TIINGO_KEY", "dummy")
-    monkeypatch.setattr(loader_module.yf, "download", lambda symbol, **kwargs: pd.DataFrame())  # yfinance: nothing
+    monkeypatch.setattr(yf, "download", lambda symbol, **kwargs: pd.DataFrame())  # yfinance: nothing
 
     tiingo_calls = []
 
@@ -245,7 +247,7 @@ def test_load_prices_falls_back_to_tiingo_when_yfinance_empty(monkeypatch, tmp_p
         return _FakeResponse(json_data=rows)
 
     monkeypatch.setattr(requests, "get", fake_tiingo_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     caplog.set_level(logging.INFO)
     df = load_prices(["delistedco"], "2020-01-01", "2020-01-05", cache_dir=str(tmp_path))
@@ -262,8 +264,8 @@ def test_load_prices_falls_back_to_tiingo_when_yfinance_empty(monkeypatch, tmp_p
 def test_load_prices_tiingo_fallback_not_needed_when_yfinance_has_data(monkeypatch, tmp_path):
     # The common case: yfinance satisfies the request, so TIINGO_KEY is never required.
     monkeypatch.delenv("TIINGO_KEY", raising=False)
-    monkeypatch.setattr(loader_module.yf, "download", lambda symbol, **kwargs: _fake_yf_frame(["2020-01-02"], [10.0], symbol))
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(yf, "download", lambda symbol, **kwargs: _fake_yf_frame(["2020-01-02"], [10.0], symbol))
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
 
@@ -272,10 +274,10 @@ def test_load_prices_tiingo_fallback_not_needed_when_yfinance_has_data(monkeypat
 
 def test_tiingo_429_retries_with_exponential_backoff(monkeypatch, tmp_path):
     monkeypatch.setenv("TIINGO_KEY", "dummy")
-    monkeypatch.setattr(loader_module.yf, "download", lambda symbol, **kwargs: pd.DataFrame())
+    monkeypatch.setattr(yf, "download", lambda symbol, **kwargs: pd.DataFrame())
 
     sleep_calls = []
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: sleep_calls.append(s))
+    monkeypatch.setattr(time, "sleep", lambda s: sleep_calls.append(s))
 
     attempts = {"n": 0}
 
@@ -297,7 +299,7 @@ def test_tiingo_429_retries_with_exponential_backoff(monkeypatch, tmp_path):
 
 def test_tiingo_404_is_a_real_skip_without_retry(monkeypatch, tmp_path):
     monkeypatch.setenv("TIINGO_KEY", "dummy")
-    monkeypatch.setattr(loader_module.yf, "download", lambda symbol, **kwargs: pd.DataFrame())
+    monkeypatch.setattr(yf, "download", lambda symbol, **kwargs: pd.DataFrame())
 
     attempts = {"n": 0}
 
@@ -306,7 +308,7 @@ def test_tiingo_404_is_a_real_skip_without_retry(monkeypatch, tmp_path):
         return _FakeResponse(status_code=404)
 
     monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.warns(UserWarning):
         df = load_prices(["nosuchticker"], "2020-01-01", "2020-01-05", cache_dir=str(tmp_path))
@@ -355,7 +357,7 @@ def test_load_fundamentals_lags_report_date(monkeypatch, tmp_path):
         return _FakeResponse(json_data=company_facts)
 
     monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = load_fundamentals(["aapl"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
 
@@ -380,7 +382,7 @@ def test_load_fundamentals_skips_ticker_with_no_cik(monkeypatch, tmp_path):
         return _FakeResponse(json_data={"0": {"cik_str": 1, "ticker": "SOMEOTHERTICKER", "title": "X"}})
 
     monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.warns(UserWarning):
         df = load_fundamentals(["nosuchticker"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
@@ -395,7 +397,7 @@ def test_load_fundamentals_never_caches_an_empty_result_as_parquet(monkeypatch, 
         return _FakeResponse(json_data={"facts": {"us-gaap": {}}})  # always empty
 
     monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.warns(UserWarning):
         load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
@@ -413,7 +415,7 @@ def test_load_fundamentals_skiplists_permanent_failure_and_skips_network_on_reru
         return _FakeResponse(json_data={"facts": {"us-gaap": {}}})  # permanently empty -> no usable EPS
 
     monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.warns(UserWarning):
         load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
@@ -465,7 +467,7 @@ def test_load_fundamentals_dedupes_multiple_periods_sharing_one_filing_date(monk
         return _FakeResponse(json_data=company_facts)
 
     monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = load_fundamentals(["aaa"], "2016-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path))
 
@@ -478,9 +480,9 @@ def test_load_fundamentals_dedupes_multiple_periods_sharing_one_filing_date(monk
 
 def test_resolve_cik_uses_manual_overrides_for_known_sec_gaps():
     # MMC and WBA are real tickers SEC's own company_tickers.json omits/aliases
-    # (see _CIK_OVERRIDES) — they must resolve even from an otherwise-empty map.
+    # (see CIK_OVERRIDES) — they must resolve even from an otherwise-empty map.
     ticker_to_cik = {"AAPL": 320193}
-    resolved = {t: loader_module._resolve_cik(t, {**ticker_to_cik, **loader_module._CIK_OVERRIDES}) for t in ["AAPL", "MMC", "WBA"]}
+    resolved = {t: sec_edgar.resolve_cik(t, {**ticker_to_cik, **sec_edgar.CIK_OVERRIDES}) for t in ["AAPL", "MMC", "WBA"]}
     assert resolved == {"AAPL": 320193, "MMC": 62709, "WBA": 1618921}
 
 
@@ -489,9 +491,9 @@ def test_load_sec_ticker_to_cik_map_applies_overrides(monkeypatch, tmp_path):
         return _FakeResponse(json_data={"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}})
 
     monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
-    mapping = loader_module._load_sec_ticker_to_cik_map(str(tmp_path))
+    mapping = sec_edgar.load_ticker_to_cik_map(tmp_path / "sec_company_tickers.json")
 
     assert mapping["AAPL"] == 320193
     assert mapping["MMC"] == 62709  # not in the fetched JSON at all — only via the override
@@ -508,9 +510,9 @@ def test_debug_print_resolved_ciks_returns_all_four(monkeypatch, tmp_path, capsy
         )
 
     monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
-    resolved = loader_module.debug_print_resolved_ciks(cache_dir=str(tmp_path))
+    resolved = sec_edgar.debug_print_resolved_ciks(cache_dir=str(tmp_path))
 
     assert resolved == {"AAPL": 320193, "V": 1403161, "MMC": 62709, "WBA": 1618921}
     out = capsys.readouterr().out
@@ -544,7 +546,7 @@ def test_load_fundamentals_falls_back_through_eps_concept_chain(monkeypatch, tmp
         return _FakeResponse(json_data=company_facts)
 
     monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = load_fundamentals(["aaa"], "2019-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path))
 
@@ -579,7 +581,7 @@ def test_load_fundamentals_derives_missing_q4_from_annual_minus_first_three_quar
         return _FakeResponse(json_data=company_facts)
 
     monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = load_fundamentals(["aaa"], "2019-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path))
 
@@ -595,7 +597,7 @@ def test_load_fundamentals_logs_when_sec_returns_no_facts(monkeypatch, tmp_path,
         return _FakeResponse(json_data={"facts": {"us-gaap": {}}})  # a real CIK, but SEC has no facts on file
 
     monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     caplog.set_level(logging.INFO)
     with pytest.warns(UserWarning):
@@ -633,7 +635,7 @@ def test_load_fundamentals_date_filter_excludes_rows_lagged_past_end(monkeypatch
         return _FakeResponse(json_data=company_facts)
 
     monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(loader_module.time, "sleep", lambda s: None)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
     # lag_days=10: the 2020-01-01 filing lands at date=2020-01-11 (<= end, kept);
     # the 2020-02-01 filing lands at date=2020-02-11 (> end, must be excluded).
