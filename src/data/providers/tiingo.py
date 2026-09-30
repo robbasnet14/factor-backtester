@@ -19,9 +19,12 @@ _POLITE_DELAY_SECONDS = 0.5
 
 
 class TiingoProvider:
-    """Adjusted closes from Tiingo's Daily Prices API. A 404 (Tiingo has no
-    such ticker) is an empty answer; a missing key, exhausted 429 retries, or
-    any other HTTP error raises."""
+    """Daily prices from Tiingo's Daily Prices API. Tiingo returns the raw,
+    as-traded `close` plus a `splitFactor` on each split date, so `close`
+    here is split-adjusted using exactly the splits in the same response (to
+    the basis at the last returned date). A 404 (Tiingo has no such ticker)
+    is an empty answer; a missing key, exhausted 429 retries, or any other
+    HTTP error raises."""
 
     name = "Tiingo"
 
@@ -33,8 +36,12 @@ class TiingoProvider:
             return empty_prices()
         df = pd.DataFrame(rows)
         df["date"] = pd.to_datetime(df["date"], utc=True).dt.tz_localize(None)
-        df = df.rename(columns={"adjClose": "adj_close"})
-        return df[["date", "adj_close"]]
+        df = df.sort_values("date").reset_index(drop=True)
+        df = df.rename(columns={"adjClose": "adj_close", "splitFactor": "split_ratio"})
+        # Undo every split that happens after each date: raw close / product of later split ratios.
+        later_splits = df["split_ratio"][::-1].cumprod()[::-1].shift(-1, fill_value=1.0)
+        df["close"] = df["close"] / later_splits
+        return df[["date", "adj_close", "close", "split_ratio"]]
 
 
 def _headers() -> dict:

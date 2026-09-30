@@ -6,6 +6,7 @@ the same Parquet cache without knowing it exists.
 """
 import json
 import re
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -84,6 +85,18 @@ class PriceCache:
     `root/price_cache_ranges.json` recording the range already requested for
     each ticker, so a later request inside it is a cache hit even when the
     data itself starts later or ends earlier.
+
+    Each file stores its split history (`split_ratio`) alongside the prices
+    it was adjusted with, and the two are only ever replaced together: if a
+    fresh download's splits differ from the cached file's (a new split since
+    it was cached), the cached rows are discarded rather than merged, since
+    every one of them is on the old share basis.
+
+    A download only replaces cached rows if it covers everything cached. A
+    partial answer that disagrees with the cache — often a delisted ticker
+    the source has since reassigned to a different company, returning only
+    the newcomer's recent history — is ignored with a warning and the cached
+    series kept, since it's internally consistent and the answer isn't.
     """
 
     def __init__(self, root: Path):
@@ -98,10 +111,21 @@ class PriceCache:
             self._ranges_on_disk = dict(self.ranges)
 
     def load(self, provider: PriceProvider, ticker: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
-        """[date, ticker, adj_close] for `ticker` in [start, end], asking
-        `provider` only when the cache doesn't already cover the range."""
+        """[date, ticker, adj_close, close, split_ratio] for `ticker` in
+        [start, end], asking `provider` only when the cache doesn't already
+        cover the range.
+
+        `close` comes back on the share basis in effect at `end`: splits the
+        source applied after `end` are undone, so the result doesn't depend
+        on when the data was downloaded, and the `split_ratio` values inside
+        the window are exactly what's needed to put per-share figures on the
+        same basis. A series cached before `close` existed, that no provider
+        can refresh, comes back with `close` and `split_ratio` missing (NaN)
+        rather than guessed.
+        """
         path = _ticker_file(self.directory, ticker)
         cached = pd.read_parquet(path) if path.exists() else empty_prices()
+        legacy = not cached.empty and "close" not in cached.columns  # written before close/split_ratio existed
         key = ticker.upper()
         recorded = self.ranges.get(key)
 
@@ -113,19 +137,37 @@ class PriceCache:
             and pd.Timestamp(recorded[1]) >= end
         )
 
-        if data_covers or range_covers:
+        if (data_covers or range_covers) and not legacy:
             merged = cached
         else:
             fetch_start = min(cached["date"].min(), start) if not cached.empty else start
             fetch_end = max(cached["date"].max(), end) if not cached.empty else end
-            fetched = provider.fetch(ticker, fetch_start, fetch_end)
-            merged = (
-                pd.concat([cached, fetched], ignore_index=True)
-                .drop_duplicates(subset="date")
-                .sort_values("date")
-                .reset_index(drop=True)
-            )
-            merged.to_parquet(path, index=False)
+            fetched = provider.fetch(ticker, fetch_start, fetch_end).sort_values("date").reset_index(drop=True)
+            covers = not fetched.empty and (cached.empty or _covers(fetched, cached))
+            if fetched.empty:
+                merged = cached  # nothing new; a legacy file stays as it is, to be retried next run
+            elif legacy and not covers:
+                merged = cached  # can't check a partial answer against a file with no split history
+            elif cached.empty or covers:
+                merged = fetched  # the fresh download is the whole story, whatever its splits
+            elif _split_events(cached, fetched["date"].min()) != _split_events(fetched, fetched["date"].min()):
+                warnings.warn(
+                    f"{provider.name} returned only {fetched['date'].min().date()}..{fetched['date'].max().date()} for "
+                    f"{ticker} with a split history that disagrees with the cached series (possibly a reused "
+                    "ticker); keeping the cached series."
+                )
+                merged = cached
+            else:
+                # Same splits, but the source no longer returns part of the cached
+                # history: keep those older rows, and the fresh ones everywhere else.
+                merged = (
+                    pd.concat([cached, fetched], ignore_index=True)
+                    .drop_duplicates(subset="date", keep="last")
+                    .sort_values("date")
+                    .reset_index(drop=True)
+                )
+            if merged is not cached:
+                merged.to_parquet(path, index=False)
             # Record the range once the ticker has data, whether from this fetch or
             # the cache (e.g. a delisted name Tiingo supplied and Yahoo now returns
             # nothing for). With no data at all it goes on to the next provider /
@@ -138,9 +180,29 @@ class PriceCache:
                     covered_end = max(covered_end, pd.Timestamp(recorded[1]))
                 self.ranges[key] = [fetch_start.date().isoformat(), covered_end.date().isoformat()]
 
+        if "close" not in merged.columns:
+            merged = merged.assign(close=float("nan"), split_ratio=float("nan"))
         sliced = merged[(merged["date"] >= start) & (merged["date"] <= end)].copy()
+        # Put `close` on the basis in effect at `end` by undoing later splits.
+        sliced["close"] *= merged.loc[merged["date"] > end, "split_ratio"].prod()
         sliced.insert(1, "ticker", ticker.upper())
-        return sliced[["date", "ticker", "adj_close"]]
+        return sliced[["date", "ticker", "adj_close", "close", "split_ratio"]]
+
+
+def _split_events(prices: pd.DataFrame, since: pd.Timestamp) -> set:
+    rows = prices[(prices["date"] >= since) & (prices["split_ratio"] != 1.0) & prices["split_ratio"].notna()]
+    return set(zip(rows["date"], rows["split_ratio"]))
+
+
+_COVER_SLACK = pd.Timedelta(days=7)  # a first/last trading day can differ a little between sources
+
+
+def _covers(fetched: pd.DataFrame, cached: pd.DataFrame) -> bool:
+    """Whether a fresh download spans every cached date (within a few days)."""
+    return (
+        fetched["date"].min() <= cached["date"].min() + _COVER_SLACK
+        and fetched["date"].max() >= cached["date"].max() - _COVER_SLACK
+    )
 
 
 class FundamentalsCache:

@@ -22,6 +22,8 @@ import yfinance as yf
 from src.data import fundamentals, prices
 from src.data.loader import default_price_providers, load_fundamentals, load_prices
 from src.data.providers import sec_edgar
+from src.data.providers.tiingo import TiingoProvider
+from src.data.providers.yahoo import YahooProvider
 from src.data.universe import build_universe
 from tests.fakes import FakeFundamentalsProvider, FakePriceProvider
 
@@ -41,9 +43,11 @@ class _FakeResponse:
 
 
 def _fake_yf_frame(dates: list[str], closes: list[float], symbol: str) -> pd.DataFrame:
+    """The shape yfinance returns with auto_adjust=False, actions=True (no splits here)."""
     index = pd.DatetimeIndex(dates, name="Date")
-    columns = pd.MultiIndex.from_tuples([("Close", symbol)], names=["Price", "Ticker"])
-    return pd.DataFrame([[c] for c in closes], index=index, columns=columns)
+    fields = ["Adj Close", "Close", "Stock Splits"]
+    columns = pd.MultiIndex.from_tuples([(f, symbol) for f in fields], names=["Price", "Ticker"])
+    return pd.DataFrame([[c, c, 0.0] for c in closes], index=index, columns=columns)
 
 
 JAN_PRICES = {"2020-01-02": 10.0, "2020-01-03": 10.5, "2020-01-06": 11.0}
@@ -74,7 +78,7 @@ def test_load_prices_fetches_caches_and_slices(default_chain, tmp_path):
 
     df = load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
 
-    assert list(df.columns) == ["date", "ticker", "adj_close"]
+    assert list(df.columns) == ["date", "ticker", "adj_close", "close", "split_ratio"]
     assert (df["ticker"] == "AAPL").all()
     assert len(df) == 3
     assert (tmp_path / "prices" / "AAPL.parquet").exists()
@@ -105,7 +109,7 @@ def test_load_prices_cached_delisted_name_is_not_refetched_when_yahoo_has_nothin
     # for it, but the cached data must still be served — and asked for only once.
     (tmp_path / "prices").mkdir()
     pd.DataFrame(
-        {"date": pd.to_datetime(["2020-01-02", "2020-01-03"]), "adj_close": [5.0, 5.1]}
+        {"date": pd.to_datetime(["2020-01-02", "2020-01-03"]), "adj_close": [5.0, 5.1], "close": [5.0, 5.1], "split_ratio": [1.0, 1.0]}
     ).to_parquet(tmp_path / "prices" / "GONE.parquet", index=False)
 
     calls, sleeps = [], []
@@ -262,7 +266,7 @@ def test_load_prices_falls_back_to_tiingo_when_yfinance_empty(monkeypatch, tmp_p
 
     def fake_tiingo_get(url, headers=None, params=None, timeout=None):
         tiingo_calls.append(url)
-        rows = [{"date": "2020-01-02T00:00:00.000Z", "close": 10.0, "adjClose": 42.0}]
+        rows = [{"date": "2020-01-02T00:00:00.000Z", "close": 10.0, "adjClose": 42.0, "splitFactor": 1.0}]
         return _FakeResponse(json_data=rows)
 
     monkeypatch.setattr(requests, "get", fake_tiingo_get)
@@ -304,7 +308,7 @@ def test_tiingo_429_retries_with_exponential_backoff(monkeypatch, tmp_path):
         attempts["n"] += 1
         if attempts["n"] < 3:
             return _FakeResponse(status_code=429)
-        return _FakeResponse(json_data=[{"date": "2020-01-02T00:00:00.000Z", "close": 10.0, "adjClose": 55.0}])
+        return _FakeResponse(json_data=[{"date": "2020-01-02T00:00:00.000Z", "close": 10.0, "adjClose": 55.0, "splitFactor": 1.0}])
 
     monkeypatch.setattr(requests, "get", fake_get)
 
@@ -666,3 +670,33 @@ def test_build_universe_includes_delisted_names(monkeypatch, tmp_path):
     assert bool(universe.loc["2010-07-01", "BBB"]) is False
     assert bool(universe.loc["2010-07-01", "CCC"]) is True
     assert bool(universe.loc["2010-01-05", "CCC"]) is False
+
+
+def test_tiingo_close_is_split_adjusted_from_its_raw_close_and_split_factor(monkeypatch):
+    # Tiingo's `close` is as traded; a 4-for-1 on 2020-08-31 means 500 then was 125 per current share.
+    monkeypatch.setenv("TIINGO_KEY", "dummy")
+    rows = [
+        {"date": "2020-08-28T00:00:00.000Z", "close": 500.0, "adjClose": 120.0, "splitFactor": 1.0},
+        {"date": "2020-08-31T00:00:00.000Z", "close": 129.0, "adjClose": 125.0, "splitFactor": 4.0},
+    ]
+    monkeypatch.setattr(requests, "get", lambda url, headers=None, params=None, timeout=None: _FakeResponse(json_data=rows))
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+
+    df = TiingoProvider().fetch("AAPL", pd.Timestamp("2020-08-28"), pd.Timestamp("2020-08-31"))
+
+    assert df["close"].tolist() == [125.0, 129.0]
+    assert df["split_ratio"].tolist() == [1.0, 4.0]
+    assert df["adj_close"].tolist() == [120.0, 125.0]
+
+
+def test_yahoo_reports_splits_as_ratios_and_no_split_as_one(monkeypatch):
+    index = pd.DatetimeIndex(["2020-08-28", "2020-08-31"], name="Date")
+    columns = pd.MultiIndex.from_tuples([(f, "AAPL") for f in ["Adj Close", "Close", "Stock Splits"]])
+    frame = pd.DataFrame([[120.0, 124.8, 0.0], [125.0, 129.0, 4.0]], index=index, columns=columns)
+    monkeypatch.setattr(yf, "download", lambda symbol, **kwargs: frame)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+
+    df = YahooProvider().fetch("AAPL", pd.Timestamp("2020-08-28"), pd.Timestamp("2020-08-31"))
+
+    assert df["split_ratio"].tolist() == [1.0, 4.0]
+    assert df["close"].tolist() == [124.8, 129.0]

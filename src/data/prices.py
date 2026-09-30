@@ -127,8 +127,14 @@ def _first_provider_with_data(
 ) -> tuple[pd.DataFrame | None, str]:
     """Walk the chain in order. Returns (series, provider name) from the first
     provider with data; otherwise (None, "unavailable") if every provider
-    answered "no data", or (None, "failed") if any of them raised."""
+    answered "no data", or (None, "failed") if any of them raised.
+
+    A series whose `close` is entirely unknown — cached before `close` and
+    splits were stored, and not refreshable by this provider — doesn't end
+    the walk: a later provider may be able to refresh it. It's only returned
+    if none can, still usable for returns but not for per-share work."""
     failed = []
+    stale = None
     for i, provider in enumerate(chain):
         try:
             series = cache.load(provider, ticker, start_ts, end_ts)
@@ -137,11 +143,17 @@ def _first_provider_with_data(
             next_step = f"trying {chain[i + 1].name}" if i < len(chain) - 1 else "no provider left"
             warnings.warn(f"{provider.name} error for {ticker}: {e}; {next_step}")
             continue
+        if not series.empty and series["close"].isna().all():
+            stale = stale or (series, provider.name)
+            continue
         if not series.empty:
             if i > 0:
                 _logger.info("%s: served from %s fallback (%s had no data)", ticker, provider.name, chain[i - 1].name)
             return series, provider.name
 
+    if stale is not None:
+        _logger.info("%s: only old-format cached prices available (no close or split history)", ticker)
+        return stale
     if failed:
         warnings.warn(
             f"Skipping {ticker} this run: {' and '.join(failed)} failed and no other provider had data; "

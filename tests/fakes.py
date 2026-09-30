@@ -5,13 +5,18 @@ from src.data.providers.base import empty_fundamentals, empty_prices
 
 
 class FakePriceProvider:
-    """Serves `prices` ({ticker: {date: adj_close}}), records every call, and
-    raises `error` instead of answering if one is given. A ticker it doesn't
-    know is an empty answer, per the provider contract."""
+    """Serves `prices` ({ticker: {date: price}}, used as both `adj_close` and
+    `close`) with split events from `splits` ({ticker: {date: ratio}}),
+    records every call, and raises `error` instead of answering if one is
+    given. A ticker it doesn't know is an empty answer, per the provider
+    contract."""
 
-    def __init__(self, name: str, prices: dict | None = None, error: Exception | None = None):
+    def __init__(
+        self, name: str, prices: dict | None = None, error: Exception | None = None, splits: dict | None = None
+    ):
         self.name = name
         self.prices = prices or {}
+        self.splits = splits or {}
         self.error = error
         self.calls: list[tuple[str, pd.Timestamp, pd.Timestamp]] = []
 
@@ -22,8 +27,11 @@ class FakePriceProvider:
         series = self.prices.get(ticker.upper())
         if not series:
             return empty_prices()
-        df = pd.DataFrame({"date": pd.to_datetime(list(series)), "adj_close": [float(v) for v in series.values()]})
-        return df[(df["date"] >= start) & (df["date"] <= end)].reset_index(drop=True)
+        values = [float(v) for v in series.values()]
+        df = pd.DataFrame({"date": pd.to_datetime(list(series)), "adj_close": values, "close": values})
+        split_dates = {pd.Timestamp(d): r for d, r in self.splits.get(ticker.upper(), {}).items()}
+        df["split_ratio"] = df["date"].map(split_dates).fillna(1.0)
+        return df[df["date"] >= start].reset_index(drop=True)
 
 
 class FakeFundamentalsProvider:

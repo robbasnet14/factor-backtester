@@ -17,9 +17,13 @@ def to_yahoo_symbol(ticker: str) -> str:
 
 
 class YahooProvider:
-    """Adjusted closes from Yahoo Finance (`auto_adjust=True`, so `Close` is
-    already split/dividend-adjusted). An unknown or delisted symbol comes back
-    empty; errors are retried with backoff and re-raised if they persist."""
+    """Daily prices from Yahoo Finance: `Adj Close` (split- and
+    dividend-adjusted) as `adj_close`, `Close` (split-adjusted only) as
+    `close`, and `Stock Splits` as `split_ratio`. Yahoo adjusts `Close` for
+    every split up to today, so the download always runs through today —
+    otherwise a split after `end` would be baked into `close` but missing
+    from `split_ratio`. An unknown or delisted symbol comes back empty;
+    errors are retried with backoff and re-raised if they persist."""
 
     name = "yfinance"
 
@@ -31,8 +35,10 @@ class YahooProvider:
                 df = yf.download(
                     symbol,
                     start=start.date().isoformat(),
-                    end=(end + pd.Timedelta(days=1)).date().isoformat(),  # yfinance's end is exclusive
-                    auto_adjust=True,
+                    # Through today, not `end` (see the class docstring); yfinance's end is exclusive.
+                    end=(max(end, pd.Timestamp.today().normalize()) + pd.Timedelta(days=1)).date().isoformat(),
+                    auto_adjust=False,
+                    actions=True,
                     progress=False,
                     threads=False,
                 )
@@ -50,8 +56,11 @@ class YahooProvider:
         if isinstance(df.columns, pd.MultiIndex):  # yfinance always uses (field, ticker) columns
             df.columns = df.columns.get_level_values(0)
 
-        out = df[["Close"]].rename(columns={"Close": "adj_close"})
+        out = df[["Adj Close", "Close", "Stock Splits"]].rename(
+            columns={"Adj Close": "adj_close", "Close": "close", "Stock Splits": "split_ratio"}
+        )
+        out["split_ratio"] = out["split_ratio"].replace(0.0, 1.0)  # Yahoo uses 0 for "no split"
         out.index.name = "date"
         out = out.reset_index()
         out["date"] = pd.to_datetime(out["date"]).dt.tz_localize(None)
-        return out[["date", "adj_close"]]
+        return out[["date", "adj_close", "close", "split_ratio"]]

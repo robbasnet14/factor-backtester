@@ -75,3 +75,31 @@ def test_custom_fundamentals_provider_ignores_the_default_skiplist(tmp_path):
 
     assert df["earnings"].tolist() == [1.0]
     assert mine.calls == ["aaa"]
+
+def test_a_legacy_cached_series_is_refreshed_by_a_later_provider_in_the_chain(tmp_path):
+    # Cached before close/splits were stored; the first provider has nothing for
+    # the ticker, so the chain must go on and let the second one refresh it.
+    root = tmp_path / "providers" / "yfinance+Tiingo"  # this chain's cache namespace
+    (root / "prices").mkdir(parents=True)
+    pd.DataFrame({"date": pd.to_datetime(["2020-01-02"]), "adj_close": [5.0]}).to_parquet(
+        root / "prices" / "GONE.parquet", index=False
+    )
+    first = FakePriceProvider("yfinance")
+    second = FakePriceProvider("Tiingo", {"GONE": {"2020-01-02": 5.0, "2020-01-03": 5.1}})
+
+    df = load_prices(["gone"], "2020-01-02", "2020-01-03", cache_dir=str(tmp_path), providers=[first, second])
+
+    assert len(second.calls) == 1
+    assert df["close"].tolist() == [5.0, 5.1]
+
+
+def test_a_legacy_series_nobody_can_refresh_is_still_returned_for_returns(tmp_path):
+    root = tmp_path / "providers" / "yfinance"
+    (root / "prices").mkdir(parents=True)
+    pd.DataFrame({"date": pd.to_datetime(["2020-01-02"]), "adj_close": [5.0]}).to_parquet(
+        root / "prices" / "GONE.parquet", index=False
+    )
+
+    df = load_prices(["gone"], "2020-01-02", "2020-01-03", cache_dir=str(tmp_path), providers=[FakePriceProvider("yfinance")])
+
+    assert df["adj_close"].tolist() == [5.0] and df["close"].isna().all()

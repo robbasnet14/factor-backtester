@@ -17,17 +17,33 @@ The loader relies on that split: an empty answer from every provider means a
 ticker is genuinely unavailable, while an exception means "unknown, ask again
 next run". A provider that turns a failure into an empty result (or the
 reverse) breaks that distinction.
+
+Prices carry two adjusted series with different jobs. `adj_close` is split-
+and dividend-adjusted, for total returns (momentum, forward returns). `close`
+is split-adjusted only, for anything compared with per-share accounting
+figures (earnings yield, market cap). A split adjustment is a change of units
+fixed by the splits the source knew about when it answered, so a price
+provider must return every split its `close` is adjusted for, as
+`split_ratio` on the split date (4.0 for a 4-for-1), even ones after `end`,
+so per-share figures can be restated onto exactly the same basis.
 """
 from typing import Protocol
 
 import pandas as pd
 
-PRICE_COLUMNS = ["date", "adj_close"]
+PRICE_COLUMNS = ["date", "adj_close", "close", "split_ratio"]
 FUNDAMENTALS_COLUMNS = ["report_date", "earnings", "book_value", "roe"]
 
 
 def empty_prices() -> pd.DataFrame:
-    return pd.DataFrame({"date": pd.Series(dtype="datetime64[ns]"), "adj_close": pd.Series(dtype="float64")})
+    return pd.DataFrame(
+        {
+            "date": pd.Series(dtype="datetime64[ns]"),
+            "adj_close": pd.Series(dtype="float64"),
+            "close": pd.Series(dtype="float64"),
+            "split_ratio": pd.Series(dtype="float64"),
+        }
+    )
 
 
 def empty_fundamentals() -> pd.DataFrame:
@@ -38,8 +54,10 @@ class PriceProvider(Protocol):
     name: str  # shown in logs and used to namespace the cache for a custom chain
 
     def fetch(self, ticker: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
-        """Daily split/dividend-adjusted closes for `ticker` between `start`
-        and `end` inclusive: columns [date, adj_close], `date` tz-naive.
+        """Daily prices for `ticker` from `start` through at least `end`:
+        columns [date, adj_close, close, split_ratio], `date` tz-naive.
+        `split_ratio` is 1.0 except on split dates. Rows after `end` may be
+        included, and must be if `close` is adjusted for splits after `end`.
         Empty if the source has no data for the ticker."""
         ...
 
