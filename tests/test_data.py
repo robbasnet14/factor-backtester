@@ -19,7 +19,7 @@ import pytest
 import requests
 import yfinance as yf
 
-from src.data import loader
+from src.data import fundamentals, prices
 from src.data.loader import default_price_providers, load_fundamentals, load_prices
 from src.data.providers import sec_edgar
 from src.data.universe import build_universe
@@ -55,7 +55,7 @@ def default_chain(monkeypatch):
     so loader tests exercise default-chain behaviour — its cache paths and
     skiplist — without any network layer."""
     def install(*providers):
-        monkeypatch.setattr(loader, "default_price_providers", lambda: tuple(providers))
+        monkeypatch.setattr(prices, "default_price_providers", lambda: tuple(providers))
     return install
 
 
@@ -63,7 +63,7 @@ def default_chain(monkeypatch):
 def default_fundamentals(monkeypatch):
     """Replace the default fundamentals provider (normally SEC EDGAR) with a fake."""
     def install(provider):
-        monkeypatch.setattr(loader, "default_fundamentals_provider", lambda cache_dir: provider)
+        monkeypatch.setattr(fundamentals, "default_fundamentals_provider", lambda cache_dir: provider)
     return install
 
 

@@ -5,6 +5,8 @@ than living inside them: any `PriceProvider` or `FundamentalsProvider` gets
 the same Parquet cache without knowing it exists.
 """
 import json
+import re
+from collections.abc import Sequence
 from pathlib import Path
 
 import pandas as pd
@@ -27,6 +29,47 @@ def load_json(path: Path) -> dict:
 def save_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True))
+
+
+def custom_cache_root(cache_dir: str, providers: Sequence) -> Path:
+    """Cache namespace for a caller-supplied chain, so its data never mixes
+    with (or gets served from) the default chain's cache."""
+    chain_id = "+".join(re.sub(r"[^A-Za-z0-9._-]+", "_", p.name) for p in providers)
+    return Path(cache_dir) / "providers" / chain_id
+
+
+class Skiplist:
+    """Tickers confirmed permanently unavailable, persisted as JSON at `path`
+    ({TICKER: when it was marked}) so they aren't re-asked over the network
+    on every run. Delete the file (or pass force_refresh=True to the loader)
+    to give a ticker another chance, e.g. after a real fix upstream (a new
+    SEC filing, a Yahoo/Tiingo coverage change). `path=None` gives a
+    disabled skiplist that never matches or records anything.
+    """
+
+    def __init__(self, path: Path | None):
+        self._path = path
+        self._entries = load_json(path) if path is not None else {}
+        self._changed = False
+
+    def __contains__(self, ticker: str) -> bool:
+        return ticker.upper() in self._entries
+
+    def mark(self, ticker: str) -> None:
+        if self._path is None:
+            return
+        self._changed = self._changed or ticker.upper() not in self._entries
+        self._entries[ticker.upper()] = pd.Timestamp.now("UTC").isoformat()
+
+    def clear(self, ticker: str) -> None:
+        if ticker.upper() in self._entries:
+            del self._entries[ticker.upper()]
+            self._changed = True
+
+    def save(self) -> None:
+        if self._changed:
+            save_json(self._path, self._entries)
+            self._changed = False
 
 
 def _ticker_file(directory: Path, ticker: str) -> Path:
