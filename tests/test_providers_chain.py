@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from src.data.loader import load_fundamentals, load_prices
-from tests.fakes import FakeFundamentalsProvider, FakePriceProvider
+from tests.fakes import FakeFundamentalsProvider, FakePriceProvider, flat_split_history
 
 JAN = {"2020-01-02": 10.0, "2020-01-03": 10.5, "2020-01-06": 11.0}
 
@@ -69,12 +69,17 @@ def test_custom_chain_ignores_the_default_skiplist(tmp_path):
 
 def test_custom_fundamentals_provider_ignores_the_default_skiplist(tmp_path):
     (tmp_path / "unavailable_fundamentals.json").write_text(json.dumps({"AAA": "2020-01-01T00:00:00+00:00"}))
-    mine = FakeFundamentalsProvider(rows={"AAA": [{"report_date": "2020-01-15", "earnings": 1.0, "book_value": 10.0, "roe": 0.1}]})
+    quarters = ["2019-04-15", "2019-07-15", "2019-10-15", "2020-01-15"]  # only the last lands in the window
+    mine = FakeFundamentalsProvider(rows={"AAA": [{"report_date": d, "eps": 0.25, "book_value": 10.0, "roe": 0.1} for d in quarters]})
 
-    df = load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path), provider=mine)
+    df = load_fundamentals(
+        ["aaa"], "2020-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path), provider=mine,
+        splits=flat_split_history(["aaa"]),
+    )
 
     assert df["earnings"].tolist() == [1.0]
     assert mine.calls == ["aaa"]
+
 
 def test_a_legacy_cached_series_is_refreshed_by_a_later_provider_in_the_chain(tmp_path):
     # Cached before close/splits were stored; the first provider has nothing for

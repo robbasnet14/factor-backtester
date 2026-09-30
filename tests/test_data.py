@@ -25,7 +25,7 @@ from src.data.providers import sec_edgar
 from src.data.providers.tiingo import TiingoProvider
 from src.data.providers.yahoo import YahooProvider
 from src.data.universe import build_universe
-from tests.fakes import FakeFundamentalsProvider, FakePriceProvider
+from tests.fakes import FakeFundamentalsProvider, FakePriceProvider, flat_split_history
 
 
 class _FakeResponse:
@@ -382,7 +382,7 @@ def test_load_fundamentals_lags_report_date(monkeypatch, tmp_path):
     monkeypatch.setattr(requests, "get", fake_get)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
-    df = load_fundamentals(["aapl"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
+    df = load_fundamentals(["aapl"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["aapl"]))
 
     # Two report events land inside the lagged date window: the Q3 2019 filing
     # (not enough trailing quarters yet -> NaN TTM) and the Q4/FY 10-K (the
@@ -408,7 +408,7 @@ def test_load_fundamentals_skips_ticker_with_no_cik(monkeypatch, tmp_path):
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.warns(UserWarning):
-        df = load_fundamentals(["nosuchticker"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
+        df = load_fundamentals(["nosuchticker"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["nosuchticker"]))
 
     assert df.empty
 
@@ -417,7 +417,7 @@ def test_load_fundamentals_never_caches_an_empty_result_as_parquet(default_funda
     default_fundamentals(FakeFundamentalsProvider())  # always empty
 
     with pytest.warns(UserWarning):
-        load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
+        load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
 
     assert not (tmp_path / "fundamentals" / "AAA.parquet").exists()  # a failed fetch must not be cached
 
@@ -427,7 +427,7 @@ def test_load_fundamentals_skiplists_permanent_failure_and_skips_network_on_reru
     default_fundamentals(provider)
 
     with pytest.warns(UserWarning):
-        load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
+        load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
     assert len(provider.calls) == 1
     skiplist_path = tmp_path / "unavailable_fundamentals.json"
     assert skiplist_path.exists()
@@ -437,13 +437,13 @@ def test_load_fundamentals_skiplists_permanent_failure_and_skips_network_on_reru
     # nothing was even attempted this time.
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        df = load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
+        df = load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
     assert len(provider.calls) == 1
     assert df.empty
 
     # force_refresh=True bypasses the skiplist and re-attempts the network call.
     with pytest.warns(UserWarning):
-        load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), force_refresh=True)
+        load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), force_refresh=True, splits=flat_split_history(["aaa"]))
     assert len(provider.calls) == 2
 
 
@@ -478,7 +478,7 @@ def test_load_fundamentals_dedupes_multiple_periods_sharing_one_filing_date(monk
     monkeypatch.setattr(requests, "get", fake_get)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
-    df = load_fundamentals(["aaa"], "2016-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path))
+    df = load_fundamentals(["aaa"], "2016-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
 
     # All 5 rows share report_date=2016-10-20; only one may survive.
     matches = df[df["report_date"] == pd.Timestamp("2016-10-20")]
@@ -559,7 +559,7 @@ def test_load_fundamentals_falls_back_through_eps_concept_chain(monkeypatch, tmp
     monkeypatch.setattr(requests, "get", fake_get)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
-    df = load_fundamentals(["aaa"], "2019-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path))
+    df = load_fundamentals(["aaa"], "2019-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
 
     assert not df.empty
     row = df[df["report_date"] == pd.Timestamp("2020-01-01")].iloc[0]
@@ -594,7 +594,7 @@ def test_load_fundamentals_derives_missing_q4_from_annual_minus_first_three_quar
     monkeypatch.setattr(requests, "get", fake_get)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
-    df = load_fundamentals(["aaa"], "2019-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path))
+    df = load_fundamentals(["aaa"], "2019-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
 
     # Derived Q4 = 5.0 (FY) - (1.0 + 1.0 + 1.0) = 2.0; TTM at the 10-K's report_date = 1+1+1+2 = 5.0.
     row = df[df["report_date"] == pd.Timestamp("2020-01-01")].iloc[0]
@@ -612,7 +612,7 @@ def test_load_fundamentals_logs_when_sec_returns_no_facts(monkeypatch, tmp_path,
 
     caplog.set_level(logging.INFO)
     with pytest.warns(UserWarning):
-        df = load_fundamentals(["emptyco"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
+        df = load_fundamentals(["emptyco"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["emptyco"]))
 
     assert df.empty  # an empty result here is never silent — it's logged, not just a quiet empty frame
     assert any("no us-gaap facts" in r.message for r in caplog.records)
@@ -621,13 +621,13 @@ def test_load_fundamentals_logs_when_sec_returns_no_facts(monkeypatch, tmp_path,
 def test_load_fundamentals_date_filter_excludes_rows_lagged_past_end(default_fundamentals, tmp_path):
     report_dates = ["2019-05-01", "2019-08-01", "2019-11-01", "2020-01-01", "2020-02-01"]
     default_fundamentals(FakeFundamentalsProvider(rows={
-        "AAA": [{"report_date": d, "earnings": 4.0, "book_value": 10.0, "roe": 0.1} for d in report_dates]
+        "AAA": [{"report_date": d, "eps": 1.0, "book_value": 10.0, "roe": 0.1} for d in report_dates]
     }))
 
     # lag_days=10: the 2020-01-01 filing lands at date=2020-01-11 (<= end, kept);
     # the 2020-02-01 filing lands at date=2020-02-11 (> end, must be excluded).
     end = "2020-01-15"
-    df = load_fundamentals(["aaa"], "2019-01-01", end, lag_days=10, cache_dir=str(tmp_path))
+    df = load_fundamentals(["aaa"], "2019-01-01", end, lag_days=10, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
 
     assert (df["date"] <= pd.Timestamp(end)).all()
     assert pd.Timestamp("2020-02-01") not in df["report_date"].values
@@ -643,7 +643,7 @@ def test_load_fundamentals_real_aapl_returns_nonempty_2019_2020(tmp_path):
     if the network is unreachable.
     """
     try:
-        df = load_fundamentals(["AAPL"], "2019-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path))
+        df = load_fundamentals(["AAPL"], "2019-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["AAPL"]))
     except (requests.exceptions.RequestException, OSError) as e:
         pytest.skip(f"network unavailable for SEC EDGAR integration check: {e}")
 

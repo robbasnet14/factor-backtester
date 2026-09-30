@@ -27,16 +27,17 @@ def momentum(prices: pd.DataFrame, lookback_m: int = 12, skip_m: int = 1) -> pd.
 def value(fundamentals: pd.DataFrame, prices: pd.DataFrame, metric: str = "earnings_yield") -> pd.DataFrame:
     """Value factor. Currently only `metric="earnings_yield"` (EPS / price).
 
-    `earnings_yield` needs a market price, so unlike the Step-2 stub this
-    takes `prices` (long, from `load_prices`) alongside `fundamentals` (long,
-    from `load_fundamentals`). `earnings` is the latest reported quarterly
-    EPS as of each month, not trailing-twelve-month EPS — a simplification
-    worth revisiting if the factor looks noisy in later steps.
+    `earnings` is trailing-twelve-month EPS from `load_fundamentals`,
+    restated onto the share basis of `close` in `prices` (split-adjusted,
+    not dividend-adjusted), and the price is `close` for the same reason:
+    both must be quoted per the same share. `adj_close` would be wrong here —
+    its dividend adjustment depends on dividends paid after the date, which
+    would make future dividend payers look cheaper.
     """
     if metric != "earnings_yield":
         raise NotImplementedError(f"value: metric {metric!r} is not implemented (only 'earnings_yield' is)")
 
-    monthly_price = _pivot_prices_wide(prices).resample("ME").last()
+    monthly_price = _pivot_prices_wide(prices, "close").resample("ME").last()
     monthly_eps = _fundamentals_metric_to_monthly(fundamentals, "earnings", monthly_price.index)
     monthly_eps, monthly_price = monthly_eps.align(monthly_price, join="outer")
 
@@ -58,8 +59,8 @@ def quality(fundamentals: pd.DataFrame, metric: str = "roe") -> pd.DataFrame:
     return _fundamentals_metric_to_monthly(fundamentals, "roe", monthly_index)
 
 
-def _pivot_prices_wide(prices: pd.DataFrame) -> pd.DataFrame:
-    return prices.pivot(index="date", columns="ticker", values="adj_close").sort_index()
+def _pivot_prices_wide(prices: pd.DataFrame, column: str = "adj_close") -> pd.DataFrame:
+    return prices.pivot(index="date", columns="ticker", values=column).sort_index()
 
 
 def _fundamentals_metric_to_monthly(fundamentals: pd.DataFrame, column: str, monthly_index: pd.DatetimeIndex) -> pd.DataFrame:

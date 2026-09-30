@@ -85,8 +85,21 @@ def main():
     tickers = sorted(universe.columns[universe.any(axis=0)])
     print(f"Universe: {len(tickers)} distinct tickers over the period")
 
-    prices = load_prices(tickers, start, end, cache_dir=cache_dir)
-    fundamentals = load_fundamentals(tickers, start, end, lag_days=data_cfg["fundamentals_lag_days"], cache_dir=cache_dir)
+    # Prices are loaded from two years before `start` so the split history
+    # covers the oldest quarter in any trailing-twelve-month EPS; everything
+    # else uses [start, end]. Both come from one load ending on `end`, which is
+    # what puts restated EPS and `close` on the same share basis.
+    history_start = (pd.Timestamp(start) - pd.DateOffset(years=2)).date().isoformat()
+    price_history = load_prices(tickers, history_start, end, cache_dir=cache_dir)
+    prices = price_history[price_history["date"] >= pd.Timestamp(start)].reset_index(drop=True)
+    fundamentals = load_fundamentals(
+        tickers,
+        start,
+        end,
+        lag_days=data_cfg["fundamentals_lag_days"],
+        cache_dir=cache_dir,
+        splits=price_history[["date", "ticker", "split_ratio"]],
+    )
 
     factor_frames = {}
     if factor_cfg["momentum"]["enabled"]:

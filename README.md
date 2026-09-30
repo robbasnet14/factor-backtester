@@ -19,8 +19,9 @@ answer: no, not on the pre-registered terms — the apparent edge traces to a si
 12-month fold and doesn't survive a proper multiple-testing correction.) That repo
 vendors a snapshot of this engine's code as of commit `31b92b4` here (brought in by its
 own commit `eac614c`); this repo remains the maintained, independently-evolving version.
-The snapshot predates the tradability fix and the per-name cost model, so its baseline
-numbers differ slightly from the ones below.
+The snapshot predates the tradability fix, the per-name cost model and the value-factor
+split/dividend fix (see Corrections below), so its baseline numbers differ from the ones
+here.
 
 ## What it does
 
@@ -30,7 +31,9 @@ numbers differ slightly from the ones below.
 - Pulls prices from Yahoo Finance with a Tiingo fallback for delisted names, and
   fundamentals straight from SEC EDGAR (TTM diluted EPS, book value, ROE).
 - Computes three factors per stock, per month: 12-1 momentum, earnings yield (value),
-  and ROE (quality); standardizes each date's cross-section and blends them.
+  and ROE (quality); standardizes each date's cross-section and blends them. Earnings
+  yield compares EPS and price per the same share: every quarter's EPS is restated across
+  later stock splits, and the price is split-adjusted but not dividend-adjusted.
 - Goes long the top decile, short the bottom decile, rebalances monthly, and charges
   8 bps per trade based on turnover (or, with `cost_model: per_name`, a volatility-scaled
   cost per name). Only names that actually traded on the rebalance
@@ -47,13 +50,13 @@ that matters; the in-sample column is shown only for reference.
 
 | Metric | Out-of-sample (headline) | In-sample (reference) |
 |---|---|---|
-| Annualized return | −1.6% | −0.1% |
-| Annualized volatility | 19.3% | 16.7% |
-| Sharpe ratio | 0.02 | 0.08 |
-| Deflated Sharpe (probability) | 0.52 | 0.62 |
-| Max drawdown | −50.4% | −46.4% |
-| Avg monthly turnover | 39.1% | 38.9% |
-| Hit rate | 56.0% | 54.8% |
+| Annualized return | −5.0% | −4.4% |
+| Annualized volatility | 19.3% | 16.8% |
+| Sharpe ratio | −0.16 | −0.18 |
+| Deflated Sharpe (probability) | 0.31 | 0.24 |
+| Max drawdown | −56.9% | −53.1% |
+| Avg monthly turnover | 42.3% | 42.1% |
+| Hit rate | 47.7% | 46.4% |
 
 Mean factor coverage across rebalance dates: composite score 91%, value-and-quality 71%.
 
@@ -63,14 +66,39 @@ you can sanity-check 8 bps without trusting my volatility proxy.
 
 | Cost model | OOS return | OOS Sharpe | OOS max drawdown | Deflated Sharpe | In-sample Sharpe |
 |---|---|---|---|---|---|
-| Gross (no costs) | −1.2% | 0.04 | −49.6% | 0.547 | 0.10 |
-| Flat 8 bps (headline) | −1.6% | 0.02 | −50.4% | 0.521 | 0.08 |
-| Per-name, volatility-scaled | −1.7% | 0.01 | −50.6% | 0.515 | 0.08 |
+| Gross (no costs) | −4.6% | −0.14 | −56.2% | 0.334 | −0.15 |
+| Flat 8 bps (headline) | −5.0% | −0.16 | −56.9% | 0.308 | −0.18 |
+| Per-name, volatility-scaled | −5.1% | −0.17 | −57.1% | 0.302 | −0.18 |
 
-These numbers are after a correctness fix: earlier versions could hold a delisted name in
-a month it never traded (50 position-months, booked at a flat 0%). Excluding untradable
-names moved the out-of-sample return from −1.4% to −1.6% and max drawdown from −48.9% to
-−50.4%; the Sharpe stayed at 0.02.
+### Corrections
+
+These numbers are after two correctness fixes; earlier versions of this README reported
+better ones.
+
+1. **Untradable holdings.** Earlier versions could hold a delisted name in a month it never
+   traded (50 position-months, booked at a flat 0%). Excluding untradable names moved the
+   out-of-sample return from −1.4% to −1.6%; the Sharpe stayed at 0.02.
+2. **A look-ahead leak in the value factor.** Earnings yield divided EPS *as filed* by a
+   price adjusted for every split and dividend up to the download date. After a 4-for-1,
+   earlier EPS sits on the old share basis while the price is divided by four, so every
+   stock that went on to split looked cheaper than it was, by exactly its future split
+   factor: NVDA by 40× in 2015. Stocks that split are mostly stocks that rose, so the value
+   factor ranked future winners as cheap. The dividend adjustment did the same, more
+   mildly, to future dividend payers. Summing pre- and post-split quarters into a TTM also
+   produced artifacts such as AAPL's EPS "falling" 61% after its 2020 split, and a derived
+   NVDA quarter showing a −$1.09 loss when it earned $1.18. Now each quarter's EPS is
+   restated across later splits (a change of units, so no look-ahead) and compared with a
+   split-adjusted, not dividend-adjusted, price. Walk-forward out-of-sample, attributed:
+
+   | | Return | Sharpe |
+   |---|---|---|
+   | Before the fix | −1.6% | 0.02 |
+   | Same code on re-downloaded data (revisions in the source data only) | −1.8% | 0.01 |
+   | Dividend part of the fix only | −3.3% | −0.07 |
+   | Split part of the fix only | −4.4% | −0.13 |
+   | Both (current) | −5.0% | −0.16 |
+
+   The leak was worth about 0.17 of Sharpe, almost all of the difference.
 
 ![Out-of-sample equity curve vs SPY](outputs/equity_curve_oos.png)
 
@@ -78,13 +106,14 @@ names moved the out-of-sample return from −1.4% to −1.6% and max drawdown fr
 
 The honest answer: **a naive momentum/value/quality long–short has no edge in large-cap
 US equities — not after costs, and not before them either.** Out of sample the Sharpe is
-essentially zero (0.02) and the return is slightly negative, with a deep drawdown. Even
-in-sample it's weak (0.08). The deflated Sharpe — which asks whether a result could just
-be luck given how many variants you tried — sits around 0.5, basically a coin flip.
+slightly negative (−0.16) and the return is −5% a year, with a deep drawdown; in-sample
+it's no better (−0.18). The deflated Sharpe — the probability that the true Sharpe is
+above zero, given how many variants were tried — is 0.31: no evidence of an edge, and
+nothing significant in the negative direction either.
 
 Costs aren't what kills it. With trading costs set to zero the out-of-sample Sharpe is
-0.04 and the return is still negative (−1.2% a year); costs take roughly another 0.4
-percentage points a year on top of that. There was no gross edge for costs to eat. That's
+−0.14 and the return is still −4.6% a year; costs take roughly another 0.4 percentage
+points a year on top of that. There was no gross edge for costs to eat. That's
 a stronger finding than "it works but trading is too expensive": the composite signal
 itself doesn't separate future winners from losers in this universe and period. This
 backtest can't tell me *why* — factor decay, crowding, or a too-naive equal-weight blend
@@ -104,7 +133,7 @@ src/
   backtest/   portfolio construction, cost model, engine, walk-forward
   analytics/  performance metrics, coverage report, equity-curve chart
 scripts/run_backtest.py   the entry point that wires it all together
-tests/        84 tests, network-mocked
+tests/        104 tests, network-mocked
 config.yaml   every knob (universe, dates, costs, factors, validation)
 ```
 
@@ -144,11 +173,22 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
   and a few multi-share-class names (e.g. Visa) tag EPS in a custom way SEC's API doesn't
   expose. Momentum/quality coverage is higher (~91% composite).
 - **Delisting payouts aren't modeled.** A name that stops trading while held is exited at
-  its last traded price (37 position-months); 4 of those never traded again after entry, so
+  its last traded price (36 position-months); 4 of those never traded again after entry, so
   they're booked at 0%. What shareholders actually received — a takeover premium or a
   bankruptcy loss — isn't in free price data (it needs something like CRSP delisting
   returns), so the direction of this bias is unclear, but it touches very few of the
   ~15,900 position-months.
+- **Six names have no split history, so no value score.** BBBY, BK, CSRA, EQR, HOT and
+  NFX are cached from before split data was stored, and neither Yahoo nor Tiingo returns
+  their history any more. They keep their cached prices for returns and momentum, but
+  their EPS can't be restated, so they get no earnings yield (248 name-months) rather
+  than one on a guessed share basis.
+- **Ticker symbols aren't permanent identifiers.** Sources reassign delisted symbols to
+  new companies: re-downloading turned up several whose symbol now returns a different
+  company's recent history, and the previous cache held a different security under COL.
+  The cache refuses a download that doesn't cover what it already holds, which catches
+  the partial-history case, but only a permanent security identifier (like CRSP's PERMNO)
+  would guarantee a symbol means the same company throughout.
 - **Costs are a flat 8 bps per trade in the headline** — a reasonable stand-in, not the
   truth; real costs vary by name and size.
 - **The per-name cost model is a proxy for the wrong variable.** It scales cost with each
@@ -172,9 +212,11 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
 python -m pytest tests/
 ```
 
-84 tests, all network-mocked except one opt-in live SEC integration check. They cover the
+104 tests, all network-mocked except one opt-in live SEC integration check. They cover the
 easy-to-get-wrong stuff: momentum's skip-month, the point-in-time fundamentals lag, the
-delisted-name universe, never holding a name on a date it didn't trade, turnover cost math, the yfinance→Tiingo fallback, and — the one I
+delisted-name universe, never holding a name on a date it didn't trade, EPS restated across
+splits (checked against AAPL's and NVDA's real filings), turnover cost math, the
+yfinance→Tiingo fallback, and — the one I
 care about most — a test proving the engine trades on *forward* returns, never
 contemporaneous ones.
 

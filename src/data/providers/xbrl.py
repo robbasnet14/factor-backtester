@@ -1,13 +1,15 @@
 """Pure parsing of SEC EDGAR XBRL "company facts" into point-in-time
-fundamentals — no I/O, so it can be tested directly against fixture JSON.
+quarterly fundamentals — no I/O, so it can be tested directly against
+fixture JSON.
 
-`earnings` is trailing-twelve-month (TTM) diluted EPS: the sum of the last 4
-*single-quarter* `EarningsPerShareDiluted` values as of each filing, not
-just the latest quarter. This matters because a single quarter's EPS is
-noisy and seasonal (e.g. retailers' Q4) — TTM smooths that out and is the
-conventional denominator for an earnings yield. `book_value` is the latest
-`StockholdersEquity` (total, not per-share) and `roe` is TTM
-`NetIncomeLoss` / that same `StockholdersEquity` snapshot.
+`eps` is each quarter's and fiscal year's diluted EPS exactly as first
+filed. It's deliberately not summed into a trailing twelve months, nor used
+to derive a quarter that's only reported inside a fiscal-year total, here:
+figures filed on either side of a stock split are on different share bases,
+so they can only be combined after the loader restates them onto one (see
+`src.data.splits`). `book_value` is `StockholdersEquity` (total, not
+per-share) and `roe` is TTM `NetIncomeLoss` / that equity snapshot; both are
+company totals, so splits don't affect them.
 """
 import pandas as pd
 
@@ -22,47 +24,39 @@ _ANNUAL_MAX_DAYS = 380
 EPS_CONCEPTS = ("EarningsPerShareDiluted", "EarningsPerShareBasicAndDiluted", "EarningsPerShareBasic")
 
 
-def first_usable_eps(us_gaap: dict) -> tuple[pd.DataFrame | None, str | None]:
-    """Try each concept in `EPS_CONCEPTS` in order, filling any missing Q4
-    from the annual figure, and return the first that yields any quarterly
-    observations at all.
-    """
+def first_usable_eps(us_gaap: dict) -> tuple[pd.DataFrame | None, pd.DataFrame | None, str | None]:
+    """Try each concept in `EPS_CONCEPTS` in order and return (quarterly,
+    annual, concept) for the first that yields any quarterly observations
+    once missing Q4s are counted as derivable from the annual figure."""
     for concept in EPS_CONCEPTS:
         quarterly, annual = extract_duration_facts(us_gaap.get(concept, {}))
-        filled = fill_missing_q4(quarterly, annual)
-        if not filled.empty:
-            return filled, concept
-    return None, None
+        if not fill_missing_q4(quarterly, annual).empty:
+            return quarterly, annual, concept
+    return None, None, None
 
 
-def fundamentals_from_facts(us_gaap: dict, eps_q: pd.DataFrame) -> pd.DataFrame:
-    """Combine quarterly EPS (from `first_usable_eps`) with net income and
-    stockholders' equity into [report_date, earnings, book_value, roe]."""
+def fundamentals_from_facts(us_gaap: dict, eps_quarterly: pd.DataFrame, eps_annual: pd.DataFrame) -> pd.DataFrame:
+    """Combine as-filed EPS facts (from `first_usable_eps`) with net income
+    and stockholders' equity into one row per fiscal period:
+    [report_date, period_end, period, eps, book_value, roe], sorted by
+    `period_end`. `book_value` and `roe` are for the period's end date."""
     ni_quarterly, ni_annual = extract_duration_facts(us_gaap.get("NetIncomeLoss", {}))
-    ni_q = fill_missing_q4(ni_quarterly, ni_annual)
+    ni_q = fill_missing_q4(ni_quarterly, ni_annual)  # company totals: no share basis, safe to combine here
     equity_q = extract_instant_facts(us_gaap.get("StockholdersEquity", {}))
 
-    eps_q = eps_q.copy()
-    eps_q["earnings"] = eps_q["val"].rolling(4).sum()  # TTM = trailing 4 single-quarter values
     ni_q["ttm_net_income"] = ni_q["val"].rolling(4).sum()
 
-    result = eps_q[["end", "filed", "earnings"]].merge(ni_q[["end", "ttm_net_income"]], on="end", how="left")
+    facts = pd.concat(
+        [eps_quarterly.assign(period="quarter"), eps_annual.assign(period="year")], ignore_index=True
+    ).rename(columns={"val": "eps"})
+    result = facts.merge(ni_q[["end", "ttm_net_income"]], on="end", how="left")
     result = result.merge(equity_q[["end", "val"]].rename(columns={"val": "book_value"}), on="end", how="left")
     result["roe"] = result["ttm_net_income"] / result["book_value"]
 
-    result = result.rename(columns={"filed": "report_date"})
+    result = result.rename(columns={"filed": "report_date", "end": "period_end"})
     result["report_date"] = pd.to_datetime(result["report_date"])
-
-    # A single filing can bundle multiple historical periods in one document
-    # (e.g. a 10-K's multi-year "selected quarterly data" table), so several
-    # `end` periods can share the exact same `report_date`. Collapse each
-    # report_date group to one row — the most recent underlying period — so
-    # a single filing date maps to a single TTM figure, not several
-    # contradictory ones (ties in `filed` are broken by the newest `end`,
-    # which is what "most recent filing" means once dates are tied).
-    result = result.sort_values("end").drop_duplicates(subset="report_date", keep="last")
-
-    return result[["report_date", "earnings", "book_value", "roe"]].sort_values("report_date").reset_index(drop=True)
+    result = result.sort_values(["period_end", "period"]).reset_index(drop=True)
+    return result[["report_date", "period_end", "period", "eps", "book_value", "roe"]]
 
 
 def fill_missing_q4(quarterly: pd.DataFrame, annual: pd.DataFrame) -> pd.DataFrame:
@@ -77,13 +71,15 @@ def fill_missing_q4(quarterly: pd.DataFrame, annual: pd.DataFrame) -> pd.DataFra
         return quarterly
     existing_ends = set(quarterly["end"])
     derived_rows = []
-    for _, arow in annual.iterrows():
-        if arow["end"] in existing_ends:
+    # itertuples, not iterrows: iterrows builds one Series per row, which coerces a
+    # NaN `val` to NaT when the row's other fields are dates.
+    for arow in annual.itertuples(index=False):
+        if arow.end in existing_ends:
             continue
-        prior = quarterly[quarterly["end"] < arow["end"]].sort_values("end").tail(3)
-        if len(prior) != 3 or (arow["end"] - prior["end"].min()).days > 400:
+        prior = quarterly[quarterly["end"] < arow.end].sort_values("end").tail(3)
+        if len(prior) != 3 or (arow.end - prior["end"].min()).days > 400:
             continue  # not enough of, or too stale a, Q1-Q3 run to derive Q4 from
-        derived_rows.append({"end": arow["end"], "filed": arow["filed"], "val": arow["val"] - prior["val"].sum()})
+        derived_rows.append({"end": arow.end, "filed": arow.filed, "val": arow.val - prior["val"].sum(min_count=3)})
 
     if not derived_rows:
         return quarterly
@@ -134,7 +130,9 @@ def extract_instant_facts(concept_facts: dict) -> pd.DataFrame:
 
 def _dedupe_by_end(rows: list[dict]) -> pd.DataFrame:
     if not rows:
-        return pd.DataFrame(columns=["end", "filed", "val"])
+        return pd.DataFrame(
+            {"end": pd.Series(dtype="datetime64[ns]"), "filed": pd.Series(dtype="datetime64[ns]"), "val": pd.Series(dtype="float64")}
+        )
     # A period can be re-disclosed in a later filing (e.g. as a prior-year
     # comparative); keep the earliest `filed` date so `report_date` reflects
     # when a figure FIRST became public, not a later restatement.

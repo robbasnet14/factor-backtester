@@ -11,6 +11,7 @@ import pandas as pd
 from src.data.cache import FundamentalsCache, Skiplist, custom_cache_root
 from src.data.providers.base import FundamentalsProvider
 from src.data.providers.sec_edgar import SecEdgarProvider
+from src.data.splits import ttm_fundamentals
 
 _UNAVAILABLE_FUNDAMENTALS_FILENAME = "unavailable_fundamentals.json"
 
@@ -27,9 +28,19 @@ def load_fundamentals(
     cache_dir: str = "data_cache",
     force_refresh: bool = False,
     *,
+    splits: pd.DataFrame,
     provider: FundamentalsProvider | None = None,
 ) -> pd.DataFrame:
     """Load quarterly fundamentals (TTM earnings, book value, ROE) for `tickers`.
+
+    `splits` is the split history to restate EPS with: a long frame with
+    [date, ticker, split_ratio], normally `load_prices` output over a window
+    ending on the same date as the prices the EPS will be compared with, and
+    starting early enough to cover the oldest quarter in any TTM (about two
+    years before `start`). `earnings` is TTM EPS with each quarter restated
+    onto the share basis at the end of that window (see `src.data.splits`),
+    so it's directly comparable with `close`; it's NaN where a quarter can't
+    be restated, such as a ticker with no split history.
 
     By default pulls from SEC EDGAR's XBRL company-facts API (see
     `SecEdgarProvider`, which keeps SEC's ticker->CIK file at
@@ -73,6 +84,9 @@ def load_fundamentals(
     cache = FundamentalsCache(root)
     skiplist = Skiplist(None if custom else root / _UNAVAILABLE_FUNDAMENTALS_FILENAME)
 
+    split_history = {t.upper(): g.set_index("date")["split_ratio"] for t, g in splits.groupby("ticker")}
+    no_history = pd.Series(dtype="float64")
+
     frames = []
     for ticker in tickers:
         upper = ticker.upper()
@@ -91,7 +105,8 @@ def load_fundamentals(
             warnings.warn(f"Skipping fundamentals for {ticker}: {provider.name} has no data for it")
             continue
 
-        frames.append(_lag_and_window(raw, ticker, lag_days, start_ts, end_ts))
+        ttm = ttm_fundamentals(raw, split_history.get(upper, no_history))
+        frames.append(_lag_and_window(ttm, ticker, lag_days, start_ts, end_ts))
         skiplist.clear(upper)  # force_refresh may have proved a previously-unavailable ticker now works
 
     skiplist.save()

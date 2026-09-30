@@ -81,7 +81,7 @@ class SecEdgarProvider:
         else:
             _logger.info("%s: SEC returned %d us-gaap concepts (CIK %d)", ticker, len(us_gaap), cik)
 
-        eps_q, eps_concept_used = first_usable_eps(us_gaap)
+        eps_q, eps_annual, eps_concept_used = first_usable_eps(us_gaap)
         if eps_q is None:
             _logger.info(
                 "%s: no usable EPS facts in any of %s (CIK %d) — often a multi-share-class company that "
@@ -92,7 +92,7 @@ class SecEdgarProvider:
             )
             return empty_fundamentals()
         _logger.info("%s: using %s for EPS (%d quarterly observations)", ticker, eps_concept_used, len(eps_q))
-        return fundamentals_from_facts(us_gaap, eps_q)
+        return fundamentals_from_facts(us_gaap, eps_q, eps_annual)
 
 
 def sec_get(url: str) -> dict:

@@ -28,7 +28,7 @@ keyless). Skip straight to step 1.
 python -m pytest tests/ -v
 ```
 
-What you're checking: all 84 tests pass. This proves the individual pieces — the momentum
+What you're checking: all 104 tests pass. This proves the individual pieces — the momentum
 formula, the point-in-time lag on fundamentals, the cost model, the walk-forward fold
 logic, the delisting-exit handling, and so on — behave correctly in isolation, using
 synthetic data. It does **not** by itself prove real market data flows through cleanly;
@@ -71,12 +71,12 @@ This is the actual "does it work" test. What happens, in order, and what to watc
 - `outputs/equity_curve_oos.png` exists and opens — it should show two lines (strategy vs.
   SPY) starting at $1 and diverging over time.
 - The printed "Walk-forward OUT-OF-SAMPLE summary" numbers roughly match the README's
-  Results table: Sharpe 0.02, annualized return about −1.6%, max drawdown about −50.4%,
-  deflated Sharpe about 0.52, turnover about 39%. They won't be bit-for-bit identical if
+  Results table: Sharpe −0.16, annualized return about −5.0%, max drawdown about −56.9%,
+  deflated Sharpe about 0.31, turnover about 42%. They won't be bit-for-bit identical if
   your data cache differs slightly (e.g. a ticker that's delisted since I last ran this),
   but they should be in the same ballpark — Sharpe near 0, not suddenly 2.0.
-- The cost sensitivity table shows the gross (no-cost) row near zero too: out-of-sample
-  Sharpe about 0.04, return about −1.2%. That row is what backs the README's claim that
+- The cost sensitivity table shows the gross (no-cost) row no better: out-of-sample
+  Sharpe about −0.14, return about −4.6%. That row is what backs the README's claim that
   costs aren't what kills the strategy.
 - `outputs/coverage_report.csv` — spot check that `composite_coverage` is high (~90%) and
   `value_quality_coverage` is meaningfully lower (~70%), matching the README's caveat
@@ -102,11 +102,14 @@ the library functions directly from a Python shell:
 from src.data.loader import load_prices, load_fundamentals
 from src.data.universe import build_universe
 
-# Real AAPL prices, no mocking:
-load_prices(["AAPL"], "2020-01-01", "2020-01-15", "data_cache")
+# Real AAPL prices, no mocking (adj_close for returns, close + split_ratio for per-share work):
+prices = load_prices(["AAPL"], "2017-01-01", "2021-12-31", "data_cache")
 
-# Real SEC fundamentals — TTM EPS, book value, ROE, all point-in-time:
-load_fundamentals(["AAPL"], "2019-01-01", "2020-06-30", lag_days=90, cache_dir="data_cache")
+# Real SEC fundamentals — TTM EPS, book value, ROE, all point-in-time. EPS is restated
+# across splits using the price history's split_ratio: AAPL's TTM EPS stays smooth
+# through its 2020-08-31 4-for-1 instead of "falling" 61%.
+load_fundamentals(["AAPL"], "2019-01-01", "2021-12-31", lag_days=90, cache_dir="data_cache",
+                  splits=prices[["date", "ticker", "split_ratio"]])
 
 # Confirm Lehman Brothers shows up as a member and then disappears in Sept 2008:
 u = build_universe("SP500", "2008-06-01", "2008-10-01", cache_dir="data_cache")

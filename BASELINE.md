@@ -118,3 +118,34 @@ python -m pytest tests/ --cov=src --cov=scripts --cov-report=term \
 # output fingerprint (after a run)
 shasum -a 256 outputs/net_returns.csv outputs/oos_net_returns.csv outputs/coverage_report.csv
 ```
+
+## After: split-adjusted value factor (2026-09-30)
+
+This change was meant to move the output, so the check is a documented before/after
+rather than byte-identical CSVs. Earnings yield now restates each quarter's EPS across
+later stock splits and divides by a split-adjusted, not dividend-adjusted, price; the
+price cache was re-downloaded to carry that price and its split history.
+
+Walk-forward out-of-sample, flat 8 bps, attributed by switching each part on separately:
+
+| | Return | Sharpe | Max drawdown | Deflated Sharpe |
+|---|---|---|---|---|
+| Baseline above | −1.59% | 0.02 | −50.38% | 0.521 |
+| Baseline code on re-downloaded data | −1.83% | 0.01 | −50.51% | 0.506 |
+| Dividend fix only | −3.28% | −0.07 | −53.49% | 0.418 |
+| Split fix only | −4.40% | −0.13 | −56.50% | 0.342 |
+| Both | −4.99% | −0.16 | −56.91% | 0.308 |
+
+Value coverage of universe name-months: 77.6% before, 77.4% after (six names whose split
+history can no longer be downloaded lose their earnings yield). Price series by source
+after the re-download: 485 Yahoo, 156 Tiingo (names Yahoo has nothing usable for), 6
+unrefreshable, 47 skiplisted as unavailable from both.
+
+New output fingerprint:
+
+| File | SHA-256 |
+|---|---|
+| outputs/net_returns.csv | `0cff8be7e5ed06336c0d7e3f74affa53a22e2ed70d7f6c1162d77ee9e7e9300e` |
+| outputs/oos_net_returns.csv | `d9933a7de048749793a4c84cce473dc1821e8faaf4f1d1588def6b17ea519c8a` |
+| outputs/coverage_report.csv | `34b5712bc700566014ac6de592083dbeadf3e1cb655a7b4b429d867b1c00275c` |
+

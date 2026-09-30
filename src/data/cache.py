@@ -223,7 +223,11 @@ class FundamentalsCache:
     def load(self, provider: FundamentalsProvider, ticker: str) -> pd.DataFrame:
         path = _ticker_file(self.directory, ticker)
         if path.exists():
-            return pd.read_parquet(path)
+            cached = pd.read_parquet(path)
+            if "period" in cached.columns:
+                return cached
+            # Written before as-filed EPS facts were stored (it held a TTM sum
+            # that can't be restated across splits), so fetch it again.
         raw = provider.fetch(ticker)
         if not raw.empty:
             raw.to_parquet(path, index=False)

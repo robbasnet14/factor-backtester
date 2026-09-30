@@ -13,7 +13,7 @@ def _long_prices(paths: dict[str, list[float]]) -> pd.DataFrame:
     rows = []
     for ticker, series in paths.items():
         for dt, px in zip(MONTH_ENDS, series):
-            rows.append({"date": dt, "ticker": ticker, "adj_close": px})
+            rows.append({"date": dt, "ticker": ticker, "adj_close": px, "close": px})
     return pd.DataFrame(rows)
 
 
@@ -66,6 +66,20 @@ def test_value_earnings_yield_uses_latest_report_and_price():
 
     with pytest.raises(NotImplementedError):
         value(fundamentals, prices, metric="book_to_price")
+
+
+def test_value_uses_close_not_dividend_adjusted_price():
+    # adj_close is scaled down by dividends paid *after* each date; using it
+    # would make future dividend payers look cheap. The yield must use close.
+    prices = _long_prices({"AAA": [100.0] * len(MONTH_ENDS)})
+    prices["adj_close"] = 80.0
+    fundamentals = pd.DataFrame(
+        [{"date": pd.Timestamp("2020-02-15"), "ticker": "AAA", "report_date": pd.Timestamp("2019-12-31"), "earnings": 4.0, "book_value": 20.0, "roe": 0.1}]
+    )
+
+    ey = value(fundamentals, prices, metric="earnings_yield")
+
+    assert ey.loc["2020-02-29", "AAA"] == pytest.approx(4.0 / 100.0)
 
 
 def test_quality_roe_carries_forward_point_in_time():

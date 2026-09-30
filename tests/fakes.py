@@ -35,8 +35,9 @@ class FakePriceProvider:
 
 
 class FakeFundamentalsProvider:
-    """Serves `rows` ({ticker: [{report_date, earnings, book_value, roe}, ...]})
-    and records every call; raises `error` instead if one is given."""
+    """Serves `rows` ({ticker: [{report_date, eps, book_value, roe,
+    period_end (defaults to report_date), period (defaults to "quarter")},
+    ...]}) and records every call; raises `error` instead if one is given."""
 
     def __init__(self, name: str = "fake fundamentals", rows: dict | None = None, error: Exception | None = None):
         self.name = name
@@ -53,4 +54,16 @@ class FakeFundamentalsProvider:
             return empty_fundamentals()
         df = pd.DataFrame(rows)
         df["report_date"] = pd.to_datetime(df["report_date"])
-        return df[["report_date", "earnings", "book_value", "roe"]]
+        df["period_end"] = pd.to_datetime(df["period_end"]) if "period_end" in df else df["report_date"]
+        if "period" not in df:
+            df["period"] = "quarter"
+        return df[["report_date", "period_end", "period", "eps", "book_value", "roe"]]
+
+
+def flat_split_history(tickers: list[str], start: str = "2010-01-01", end: str = "2022-12-31") -> pd.DataFrame:
+    """A `splits=` argument for `load_fundamentals` saying these tickers had
+    no splits over [start, end]: every business day with split_ratio 1.0."""
+    days = pd.bdate_range(start, end)
+    return pd.DataFrame(
+        [{"date": d, "ticker": t.upper(), "split_ratio": 1.0} for t in tickers for d in days]
+    )
