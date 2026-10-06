@@ -20,6 +20,7 @@ import requests
 
 from src.data import fundamentals, prices
 from src.data.loader import default_price_providers, load_fundamentals, load_prices
+from src.data.partial import PartialDataError
 from src.data.providers import sec_edgar, yahoo
 from src.data.providers.tiingo import TiingoProvider
 from src.data.providers.yahoo import YahooProvider
@@ -190,16 +191,19 @@ def test_load_prices_gives_up_after_max_retries(monkeypatch, tmp_path):
     # silently succeed via) the Tiingo fallback path with no key configured.
     monkeypatch.delenv("TIINGO_KEY", raising=False)
 
+    attempts = []
+
     def always_fails(symbol, *dates):
+        attempts.append(symbol)
         raise ConnectionError("simulated persistent network error")
 
     monkeypatch.setattr(yahoo, "_history", always_fails)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
-    with pytest.warns(UserWarning):
-        df = load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
+    with pytest.warns(UserWarning), pytest.raises(PartialDataError, match="simulated persistent network error"):
+        load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
 
-    assert df.empty
+    assert attempts == ["AAPL"] * 3  # retried, then given up on
 
 
 def test_load_prices_skiplists_unavailable_ticker_and_skips_network_on_rerun(default_chain, tmp_path):
@@ -235,14 +239,13 @@ def test_load_prices_never_skiplists_a_ticker_because_a_provider_failed(default_
     provider = FakePriceProvider("yfinance", error=ConnectionError("simulated persistent network error"))
     default_chain(provider)
 
-    with pytest.warns(UserWarning) as caught:
+    with pytest.warns(UserWarning), pytest.raises(PartialDataError):
         load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
-    assert any("retried next run" in str(w.message) for w in caught)
     calls_after_first = len(provider.calls)
 
     skiplist_path = tmp_path / "unavailable_prices.json"
     assert not skiplist_path.exists() or "AAPL" not in json.loads(skiplist_path.read_text())
-    with pytest.warns(UserWarning):
+    with pytest.warns(UserWarning), pytest.raises(PartialDataError):
         load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
     assert len(provider.calls) > calls_after_first  # asked again on the next run
 

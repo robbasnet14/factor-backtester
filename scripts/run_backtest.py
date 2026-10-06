@@ -26,6 +26,7 @@ from src.backtest.engine import forward_returns_from_prices, run_backtest
 from src.backtest.portfolio import decile_portfolios, tradable_on_rebalance
 from src.backtest.validation import walk_forward_backtest
 from src.data.loader import load_fundamentals, load_prices
+from src.data.partial import PartialDataError
 from src.data.universe import build_universe
 from src.features.registry import compute_factors
 from src.features.transforms import combine_factors
@@ -69,9 +70,26 @@ def print_cost_sensitivity(rows: dict[str, tuple[pd.Series, pd.Series]], n_trial
         )
 
 
+def print_partial_data_banner(failed: dict[str, str]):
+    """Shown when --allow-partial let a run continue without tickers whose
+    data source failed, at the start of the output and again at the end."""
+    rule = "!" * 78
+    print(f"\n{rule}\nPARTIAL DATA: {len(failed)} ticker(s) are missing because a data source failed for them,")
+    print("not because they have no data. Results depend on which requests failed; re-run")
+    print("without --allow-partial for a complete run.")
+    for ticker, error in sorted(failed.items()):
+        print(f"  {ticker}: {error}")
+    print(rule)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.yaml")
+    ap.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="if a data source fails for some tickers, continue without them instead of stopping",
+    )
     args = ap.parse_args()
     cfg = load_config(args.config)
 
@@ -90,16 +108,29 @@ def main():
     # else uses [start, end]. Both come from one load ending on `end`, which is
     # what puts restated EPS and `close` on the same share basis.
     history_start = (pd.Timestamp(start) - pd.DateOffset(years=2)).date().isoformat()
-    price_history = load_prices(tickers, history_start, end, cache_dir=cache_dir)
+    benchmark_ticker = cfg["benchmark"]
+    try:
+        price_history = load_prices(tickers, history_start, end, cache_dir=cache_dir, allow_partial=args.allow_partial)
+        fundamentals = load_fundamentals(
+            tickers,
+            start,
+            end,
+            lag_days=data_cfg["fundamentals_lag_days"],
+            cache_dir=cache_dir,
+            splits=price_history[["date", "ticker", "split_ratio"]],
+            allow_partial=args.allow_partial,
+        )
+        benchmark_prices = load_prices([benchmark_ticker], start, end, cache_dir=cache_dir, allow_partial=args.allow_partial)
+    except PartialDataError as e:
+        sys.exit(f"\nStopped before running the backtest: {e}")
+    failed = {
+        **{t: f"prices: {e}" for t, e in price_history.attrs["failed_tickers"].items()},
+        **{t: f"fundamentals: {e}" for t, e in fundamentals.attrs["failed_tickers"].items()},
+        **{t: f"benchmark prices: {e}" for t, e in benchmark_prices.attrs["failed_tickers"].items()},
+    }
+    if failed:
+        print_partial_data_banner(failed)
     prices = price_history[price_history["date"] >= pd.Timestamp(start)].reset_index(drop=True)
-    fundamentals = load_fundamentals(
-        tickers,
-        start,
-        end,
-        lag_days=data_cfg["fundamentals_lag_days"],
-        cache_dir=cache_dir,
-        splits=price_history[["date", "ticker", "split_ratio"]],
-    )
 
     factor_frames = compute_factors(factor_cfg, {"prices": prices, "fundamentals": fundamentals})
 
@@ -182,14 +213,14 @@ def main():
     }
     print_cost_sensitivity(sensitivity, n_trials)
 
-    benchmark_ticker = cfg["benchmark"]
-    benchmark_prices = load_prices([benchmark_ticker], start, end, cache_dir=cache_dir)
     benchmark_monthly = benchmark_prices.pivot(index="date", columns="ticker", values="adj_close")[benchmark_ticker]
     benchmark_forward_returns = benchmark_monthly.resample("ME").last().pct_change(fill_method=None).shift(-1)
 
     plot_equity_curve(net_returns, benchmark=benchmark_forward_returns, path="outputs/equity_curve.png")
     plot_equity_curve(oos_returns, benchmark=benchmark_forward_returns, path="outputs/equity_curve_oos.png")
     print("\nSaved outputs/equity_curve.png (full period) and outputs/equity_curve_oos.png (walk-forward OOS)")
+    if failed:
+        print_partial_data_banner(failed)
 
 
 if __name__ == "__main__":

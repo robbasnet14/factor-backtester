@@ -13,6 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.data.cache import PriceCache, Skiplist, custom_cache_root
+from src.data.partial import check_complete
 from src.data.providers.base import PriceProvider
 from src.data.providers.tiingo import TiingoProvider
 from src.data.providers.yahoo import YahooProvider
@@ -40,6 +41,7 @@ def load_prices(
     force_refresh: bool = False,
     *,
     providers: Sequence[PriceProvider] | None = None,
+    allow_partial: bool = False,
 ) -> pd.DataFrame:
     """Load daily adjusted-close prices for `tickers` between `start` and `end`.
 
@@ -60,7 +62,10 @@ def load_prices(
     stays on it) — or just delete the file to reset it entirely. A ticker
     that came up empty only because a provider failed (network error, rate
     limit, missing key) is never recorded: that's "unknown", not
-    "unavailable", and it's retried next run.
+    "unavailable", and it's retried next run. It also stops the load: once
+    every ticker has been tried, `PartialDataError` names each one that
+    failed, unless `allow_partial=True`, which continues without them (see
+    `src.data.partial`).
 
     The date range already requested for each cached ticker is recorded in
     `cache_dir/price_cache_ranges.json`, so a later call inside that range is
@@ -85,6 +90,7 @@ def load_prices(
     skiplist = Skiplist(None if custom else root / _UNAVAILABLE_PRICES_FILENAME)
 
     frames = []
+    failures = {}
     source_counts = {**{p.name: 0 for p in chain}, "unavailable": 0, "failed": 0, "skiplisted": 0}
 
     for ticker in tickers:
@@ -93,11 +99,13 @@ def load_prices(
             source_counts["skiplisted"] += 1
             continue
 
-        series, source = _first_provider_with_data(chain, cache, ticker, start_ts, end_ts)
+        series, source, errors = _first_provider_with_data(chain, cache, ticker, start_ts, end_ts)
         if series is None:
             source_counts[source] += 1
             if source == "unavailable":
                 skiplist.mark(upper)
+            else:
+                failures[ticker] = "; ".join(errors)
             continue
 
         skiplist.clear(upper)  # force_refresh may have proved a previously-unavailable ticker now works
@@ -117,17 +125,19 @@ def load_prices(
     )
 
     if not frames:
-        return pd.DataFrame(columns=["date", "ticker", "adj_close"])
-    out = pd.concat(frames, ignore_index=True)
-    return out.sort_values(["date", "ticker"]).reset_index(drop=True)
+        out = pd.DataFrame(columns=["date", "ticker", "adj_close"])
+    else:
+        out = pd.concat(frames, ignore_index=True).sort_values(["date", "ticker"]).reset_index(drop=True)
+    return check_complete(out, failures, allow_partial, "price")
 
 
 def _first_provider_with_data(
     chain: tuple[PriceProvider, ...], cache: PriceCache, ticker: str, start_ts: pd.Timestamp, end_ts: pd.Timestamp
-) -> tuple[pd.DataFrame | None, str]:
-    """Walk the chain in order. Returns (series, provider name) from the first
-    provider with data; otherwise (None, "unavailable") if every provider
-    answered "no data", or (None, "failed") if any of them raised.
+) -> tuple[pd.DataFrame | None, str, list[str]]:
+    """Walk the chain in order. Returns (series, provider name, errors) from
+    the first provider with data; otherwise (None, "unavailable", []) if every
+    provider answered "no data", or (None, "failed", errors) if any of them
+    raised, where `errors` reads "<provider>: <error>" for each one that did.
 
     A series whose `close` is entirely unknown — cached before `close` and
     splits were stored, and not refreshable by this provider — doesn't end
@@ -139,7 +149,7 @@ def _first_provider_with_data(
         try:
             series = cache.load(provider, ticker, start_ts, end_ts)
         except Exception as e:
-            failed.append(provider.name)
+            failed.append(f"{provider.name}: {e}")
             next_step = f"trying {chain[i + 1].name}" if i < len(chain) - 1 else "no provider left"
             warnings.warn(f"{provider.name} error for {ticker}: {e}; {next_step}")
             continue
@@ -149,17 +159,13 @@ def _first_provider_with_data(
         if not series.empty:
             if i > 0:
                 _logger.info("%s: served from %s fallback (%s had no data)", ticker, provider.name, chain[i - 1].name)
-            return series, provider.name
+            return series, provider.name, []
 
     if stale is not None:
         _logger.info("%s: only old-format cached prices available (no close or split history)", ticker)
-        return stale
+        return (*stale, [])
     if failed:
-        warnings.warn(
-            f"Skipping {ticker} this run: {' and '.join(failed)} failed and no other provider had data; "
-            "not marking it unavailable, so it's retried next run."
-        )
-        return None, "failed"
+        return None, "failed", failed
     names = " or ".join(p.name for p in chain)
     warnings.warn(f"No price data returned for {ticker} from {names} (possibly delisted everywhere); skipping.")
-    return None, "unavailable"
+    return None, "unavailable", []

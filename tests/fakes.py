@@ -8,11 +8,11 @@ class FakePriceProvider:
     """Serves `prices` ({ticker: {date: price}}, used as both `adj_close` and
     `close`) with split events from `splits` ({ticker: {date: ratio}}),
     records every call, and raises `error` instead of answering if one is
-    given. A ticker it doesn't know is an empty answer, per the provider
-    contract."""
+    given (an exception for every ticker, or {ticker: exception} for some). A
+    ticker it doesn't know is an empty answer, per the provider contract."""
 
     def __init__(
-        self, name: str, prices: dict | None = None, error: Exception | None = None, splits: dict | None = None
+        self, name: str, prices: dict | None = None, error: Exception | dict | None = None, splits: dict | None = None
     ):
         self.name = name
         self.prices = prices or {}
@@ -22,8 +22,9 @@ class FakePriceProvider:
 
     def fetch(self, ticker: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
         self.calls.append((ticker, start, end))
-        if self.error is not None:
-            raise self.error
+        error = self.error.get(ticker.upper()) if isinstance(self.error, dict) else self.error
+        if error is not None:
+            raise error
         series = self.prices.get(ticker.upper())
         if not series:
             return empty_prices()
@@ -37,9 +38,10 @@ class FakePriceProvider:
 class FakeFundamentalsProvider:
     """Serves `rows` ({ticker: [{report_date, eps, book_value, roe,
     period_end (defaults to report_date), period (defaults to "quarter")},
-    ...]}) and records every call; raises `error` instead if one is given."""
+    ...]}) and records every call; raises `error` instead if one is given
+    (an exception for every ticker, or {ticker: exception} for some)."""
 
-    def __init__(self, name: str = "fake fundamentals", rows: dict | None = None, error: Exception | None = None):
+    def __init__(self, name: str = "fake fundamentals", rows: dict | None = None, error: Exception | dict | None = None):
         self.name = name
         self.rows = rows or {}
         self.error = error
@@ -47,8 +49,9 @@ class FakeFundamentalsProvider:
 
     def fetch(self, ticker: str) -> pd.DataFrame:
         self.calls.append(ticker)
-        if self.error is not None:
-            raise self.error
+        error = self.error.get(ticker.upper()) if isinstance(self.error, dict) else self.error
+        if error is not None:
+            raise error
         rows = self.rows.get(ticker.upper())
         if not rows:
             return empty_fundamentals()

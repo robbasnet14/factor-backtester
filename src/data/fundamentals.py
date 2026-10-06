@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.data.cache import FundamentalsCache, Skiplist, custom_cache_root
+from src.data.partial import check_complete
 from src.data.providers.base import FundamentalsProvider
 from src.data.providers.sec_edgar import SecEdgarProvider
 from src.data.splits import ttm_fundamentals
@@ -30,6 +31,7 @@ def load_fundamentals(
     *,
     splits: pd.DataFrame,
     provider: FundamentalsProvider | None = None,
+    allow_partial: bool = False,
 ) -> pd.DataFrame:
     """Load quarterly fundamentals (TTM earnings, book value, ROE) for `tickers`.
 
@@ -57,7 +59,10 @@ def load_fundamentals(
     recorded in `cache_dir/unavailable_fundamentals.json` and skipped with no
     network call on future calls. Failures that raise (a network hiccup, SEC
     rate limiting) are NOT recorded there, since those are worth retrying
-    next run regardless. Pass `force_refresh=True` to re-check every ticker —
+    next run regardless; they stop the load instead: once every ticker has
+    been tried, `PartialDataError` names each one that failed, unless
+    `allow_partial=True`, which continues without them (see
+    `src.data.partial`). Pass `force_refresh=True` to re-check every ticker —
     or just delete the file to reset it. An explicit `provider` is cached
     under `cache_dir/providers/<name>/` and doesn't use the skiplist.
 
@@ -70,8 +75,9 @@ def load_fundamentals(
     already-lagged `date`, so a row is only ever included if its lagged
     availability date falls on or before the requested `end`.
 
-    Tickers with no data are skipped with a warning rather than failing the
-    whole batch (for SEC, see `SecEdgarProvider` on why some have none).
+    Tickers the provider has no data for are skipped with a warning rather
+    than failing the whole batch (for SEC, see `SecEdgarProvider` on why
+    some have none).
     """
     custom = provider is not None
     if custom:
@@ -88,6 +94,7 @@ def load_fundamentals(
     no_history = pd.Series(dtype="float64")
 
     frames = []
+    failures = {}
     for ticker in tickers:
         upper = ticker.upper()
         if not force_refresh and upper in skiplist:
@@ -95,8 +102,9 @@ def load_fundamentals(
         try:
             raw = cache.load(provider, ticker)
         except Exception as e:
-            # Transient (network error, rate limiting, etc.) — not skiplisted.
-            warnings.warn(f"Skipping fundamentals for {ticker}: {e}")
+            # Transient (network error, rate limiting, etc.): not skiplisted,
+            # and reported by check_complete below.
+            failures[ticker] = f"{provider.name}: {e}"
             continue
         if raw.empty:
             # Permanent: the provider answered and has nothing — worth
@@ -112,11 +120,12 @@ def load_fundamentals(
     skiplist.save()
 
     if not frames:
-        return pd.DataFrame(
+        out = pd.DataFrame(
             columns=["date", "ticker", "report_date", "earnings", "book_value", "roe", "shares_outstanding", "public_float"]
         )
-    out = pd.concat(frames, ignore_index=True)
-    return out.sort_values(["ticker", "report_date"]).reset_index(drop=True)
+    else:
+        out = pd.concat(frames, ignore_index=True).sort_values(["ticker", "report_date"]).reset_index(drop=True)
+    return check_complete(out, failures, allow_partial, "fundamentals")
 
 
 def _lag_and_window(

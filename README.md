@@ -138,7 +138,7 @@ src/
   backtest/   portfolio construction, cost model, engine, walk-forward
   analytics/  performance metrics, coverage report, equity-curve chart
 scripts/run_backtest.py   the entry point that wires it all together
-tests/        127 tests, network-mocked
+tests/        132 tests, network-mocked
 config.yaml   every knob (universe, dates, costs, factors, validation)
 ```
 
@@ -157,6 +157,12 @@ python scripts/run_backtest.py --config config.yaml
 The first run pulls and caches data (slow), and records permanently-unavailable tickers in
 `data_cache/*.json` so later runs skip them. Every run after the first reads the cache and
 is quick. Outputs land in `outputs/`.
+
+If a data source fails for some tickers (a network error, a rate limit) rather than having
+no data for them, the run stops before backtesting and lists them. Everything that did load
+is cached by then, so running again only asks for those. `--allow-partial` continues without
+them instead and prints the missing tickers before and after the results. Dropping one
+ticker is enough to move the headline: without MSFT the OOS Sharpe is −0.15 instead of −0.16.
 
 ### With Docker
 
@@ -232,11 +238,12 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
 python -m pytest tests/
 ```
 
-127 tests, all network-mocked except one opt-in live SEC integration check. They cover the
+132 tests, all network-mocked except one opt-in live SEC integration check. They cover the
 easy-to-get-wrong stuff: momentum's skip-month, the point-in-time fundamentals lag, the
 delisted-name universe, never holding a name on a date it didn't trade, EPS restated across
 splits (checked against AAPL's and NVDA's real filings), turnover cost math, the
-yfinance→Tiingo fallback, and — the one I
+yfinance→Tiingo fallback, a failed download stopping the run instead of quietly dropping
+the name, and — the one I
 care about most — a test proving the engine trades on *forward* returns, never
 contemporaneous ones.
 
