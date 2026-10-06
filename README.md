@@ -129,11 +129,12 @@ would more likely mean a bug than a discovery.
 ```
 src/
   data/       price + fundamentals loading (Yahoo/Tiingo + SEC EDGAR), point-in-time universe
-  features/   factor calculations and cross-sectional standardization
+  features/   factor formulas, standardization, and the factor registry (one plugin file per
+              factor in features/plugins/, found automatically)
   backtest/   portfolio construction, cost model, engine, walk-forward
   analytics/  performance metrics, coverage report, equity-curve chart
 scripts/run_backtest.py   the entry point that wires it all together
-tests/        104 tests, network-mocked
+tests/        115 tests, network-mocked
 config.yaml   every knob (universe, dates, costs, factors, validation)
 ```
 
@@ -212,7 +213,7 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
 python -m pytest tests/
 ```
 
-104 tests, all network-mocked except one opt-in live SEC integration check. They cover the
+115 tests, all network-mocked except one opt-in live SEC integration check. They cover the
 easy-to-get-wrong stuff: momentum's skip-month, the point-in-time fundamentals lag, the
 delisted-name universe, never holding a name on a date it didn't trade, EPS restated across
 splits (checked against AAPL's and NVDA's real filings), turnover cost math, the

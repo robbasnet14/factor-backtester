@@ -27,8 +27,8 @@ from src.backtest.portfolio import decile_portfolios, tradable_on_rebalance
 from src.backtest.validation import walk_forward_backtest
 from src.data.loader import load_fundamentals, load_prices
 from src.data.universe import build_universe
-from src.features.factors import momentum, quality, value
-from src.features.transforms import combine_factors, zscore_cross_section
+from src.features.registry import compute_factors
+from src.features.transforms import combine_factors
 from src.utils.config import load_config
 
 PERIODS_PER_YEAR = 12  # monthly rebalance
@@ -101,18 +101,7 @@ def main():
         splits=price_history[["date", "ticker", "split_ratio"]],
     )
 
-    factor_frames = {}
-    if factor_cfg["momentum"]["enabled"]:
-        mom_cfg = factor_cfg["momentum"]
-        factor_frames["momentum"] = zscore_cross_section(
-            momentum(prices, mom_cfg["lookback_months"], mom_cfg["skip_months"])
-        )
-    if factor_cfg["value"]["enabled"]:
-        factor_frames["value"] = zscore_cross_section(value(fundamentals, prices, factor_cfg["value"]["metric"]))
-    if factor_cfg["quality"]["enabled"]:
-        factor_frames["quality"] = zscore_cross_section(quality(fundamentals, factor_cfg["quality"]["metric"]))
-    if not factor_frames:
-        raise ValueError("No factors enabled in config.yaml")
+    factor_frames = compute_factors(factor_cfg, {"prices": prices, "fundamentals": fundamentals})
 
     composite = combine_factors(factor_frames)
 
