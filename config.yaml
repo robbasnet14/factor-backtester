@@ -15,6 +15,7 @@ factors:
   momentum: {enabled: true, lookback_months: 12, skip_months: 1}
   value:    {enabled: true, metric: "earnings_yield"}
   quality:  {enabled: true, metric: "roe"}
+  low_vol:  {enabled: false, window_days: 63}   # trailing daily-return volatility, window ending the day before rebalance
 
 # ---- Portfolio ----
 portfolio:
