@@ -57,7 +57,9 @@ class FakeFundamentalsProvider:
         df["period_end"] = pd.to_datetime(df["period_end"]) if "period_end" in df else df["report_date"]
         if "period" not in df:
             df["period"] = "quarter"
-        return df[["report_date", "period_end", "period", "eps", "book_value", "roe"]]
+        if "shares" not in df:
+            df["shares"] = float("nan")
+        return df[["report_date", "period_end", "period", "eps", "book_value", "roe", "shares"]]
 
 
 def flat_split_history(tickers: list[str], start: str = "2010-01-01", end: str = "2022-12-31") -> pd.DataFrame:

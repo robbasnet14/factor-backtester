@@ -41,10 +41,13 @@ def later_split_factor(splits: pd.Series, dates: pd.Series) -> pd.Series:
 
 def ttm_fundamentals(facts: pd.DataFrame, splits: pd.Series) -> pd.DataFrame:
     """Turn as-filed EPS facts [report_date, period_end, period, eps,
-    book_value, roe] (`period` "quarter" or "year") into one row per filing
-    date [report_date, earnings, book_value, roe], where `earnings` is
-    trailing-twelve-month EPS with every figure restated onto the share basis
-    at the end of `splits`.
+    book_value, roe, shares] (`period` "quarter" or "year") into one row per
+    filing date [report_date, earnings, book_value, roe, shares_outstanding],
+    where `earnings` is trailing-twelve-month EPS and `shares_outstanding`
+    the filing's share count, both restated onto the share basis at the end
+    of `splits`: per-share figures are divided by the later splits, share
+    counts multiplied by them, so market cap (shares x a `close` on the same
+    basis) is unchanged by the restatement.
 
     Order matters: each fact is restated first, then any quarter reported
     only inside a fiscal-year total is derived (year minus the three prior
@@ -52,7 +55,9 @@ def ttm_fundamentals(facts: pd.DataFrame, splits: pd.Series) -> pd.DataFrame:
     figure it depends on can't be restated (see `later_split_factor`) rather
     than combined on mixed bases.
     """
-    facts = facts.assign(eps=facts["eps"] / later_split_factor(splits, facts["report_date"]))
+    factor = later_split_factor(splits, facts["report_date"])
+    shares = facts["shares"] if "shares" in facts else pd.Series(float("nan"), index=facts.index)
+    facts = facts.assign(eps=facts["eps"] / factor, shares=shares * factor)
     as_xbrl = {"period_end": "end", "report_date": "filed", "eps": "val"}
     quarterly = facts[facts["period"] == "quarter"].rename(columns=as_xbrl)[["end", "filed", "val"]]
     annual = facts[facts["period"] == "year"].rename(columns=as_xbrl)[["end", "filed", "val"]]
@@ -62,6 +67,8 @@ def ttm_fundamentals(facts: pd.DataFrame, splits: pd.Series) -> pd.DataFrame:
     per_end = facts.sort_values("period")[["period_end", "book_value", "roe"]].drop_duplicates("period_end")
     q = q.merge(per_end, on="period_end", how="left").sort_values("period_end").reset_index(drop=True)
     q["earnings"] = q["eps"].rolling(4).sum()  # TTM = trailing 4 single-quarter values
+    per_filing = facts[["report_date", "shares"]].dropna().drop_duplicates("report_date")
+    q = q.merge(per_filing.rename(columns={"shares": "shares_outstanding"}), on="report_date", how="left")
 
     # A single filing can bundle multiple historical periods in one document
     # (e.g. a 10-K's multi-year "selected quarterly data" table), so several
@@ -71,4 +78,5 @@ def ttm_fundamentals(facts: pd.DataFrame, splits: pd.Series) -> pd.DataFrame:
     # contradictory ones (ties in `filed` are broken by the newest period,
     # which is what "most recent filing" means once dates are tied).
     q = q.drop_duplicates(subset="report_date", keep="last")
-    return q[["report_date", "earnings", "book_value", "roe"]].sort_values("report_date").reset_index(drop=True)
+    columns = ["report_date", "earnings", "book_value", "roe", "shares_outstanding"]
+    return q[columns].sort_values("report_date").reset_index(drop=True)

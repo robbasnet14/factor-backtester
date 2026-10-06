@@ -32,7 +32,7 @@ from typing import Protocol
 import pandas as pd
 
 PRICE_COLUMNS = ["date", "adj_close", "close", "split_ratio"]
-FUNDAMENTALS_COLUMNS = ["report_date", "period_end", "period", "eps", "book_value", "roe"]
+FUNDAMENTALS_COLUMNS = ["report_date", "period_end", "period", "eps", "book_value", "roe", "shares"]
 
 
 def empty_prices() -> pd.DataFrame:
@@ -67,10 +67,11 @@ class FundamentalsProvider(Protocol):
 
     def fetch(self, ticker: str) -> pd.DataFrame:
         """The ticker's full history of EPS facts, one row per fiscal period:
-        columns [report_date, period_end, period, eps, book_value, roe], with
-        `period` "quarter" or "year". `report_date` is when the figures first
-        became public (no look-ahead); `eps` is that period's EPS exactly as
-        filed, on the share basis in effect at `report_date`. The loader
+        columns [report_date, period_end, period, eps, book_value, roe,
+        shares], with `period` "quarter" or "year". `report_date` is when the
+        figures first became public (no look-ahead); `eps` and `shares`
+        (shares outstanding, NaN if not reported) are exactly as filed, on
+        the share basis in effect at `report_date`. The loader
         restates EPS across later splits, derives any quarter reported only
         inside a fiscal-year total, and builds the trailing twelve months;
         those steps have to happen after restatement, so a provider mustn't

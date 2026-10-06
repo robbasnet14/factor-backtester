@@ -224,10 +224,11 @@ class FundamentalsCache:
         path = _ticker_file(self.directory, ticker)
         if path.exists():
             cached = pd.read_parquet(path)
-            if "period" in cached.columns:
+            if {"period", "shares"} <= set(cached.columns):
                 return cached
-            # Written before as-filed EPS facts were stored (it held a TTM sum
-            # that can't be restated across splits), so fetch it again.
+            # Written by an older version: before as-filed EPS facts were stored
+            # (a TTM sum can't be restated across splits) or before shares
+            # outstanding were, so fetch it again.
         raw = provider.fetch(ticker)
         if not raw.empty:
             raw.to_parquet(path, index=False)

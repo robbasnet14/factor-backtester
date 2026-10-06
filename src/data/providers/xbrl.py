@@ -35,11 +35,41 @@ def first_usable_eps(us_gaap: dict) -> tuple[pd.DataFrame | None, pd.DataFrame |
     return None, None, None
 
 
-def fundamentals_from_facts(us_gaap: dict, eps_quarterly: pd.DataFrame, eps_annual: pd.DataFrame) -> pd.DataFrame:
-    """Combine as-filed EPS facts (from `first_usable_eps`) with net income
-    and stockholders' equity into one row per fiscal period:
-    [report_date, period_end, period, eps, book_value, roe], sorted by
-    `period_end`. `book_value` and `roe` are for the period's end date."""
+def shares_by_filing(dei: dict, us_gaap: dict) -> pd.DataFrame:
+    """Shares outstanding as each filing reported them, one row per filing
+    date: [filed, shares]. Prefers the cover-page count
+    (dei:EntityCommonStockSharesOutstanding, as of a date near filing) and
+    falls back to the balance-sheet count (us-gaap:CommonStockSharesOutstanding,
+    as of period end) for filings without one. Like EPS, the count is on the
+    share basis in effect when filed.
+
+    Multi-class companies: company facts only include undimensioned facts,
+    and these filers report the cover-page count per share class (GOOGL's
+    10-K has one each for classes A, B and C), so they usually have no
+    cover-page count here. Whatever count they do have can't be paired with
+    the one price series a ticker has, because market cap needs
+    sum(shares_class x price_class): BRK.B's undimensioned count is its
+    Class A shares (~950,000), which times the Class B price gives ~$0.1B
+    instead of ~$200B. A consumer computing market cap must exclude
+    multi-class companies rather than trust the count.
+    """
+    def latest_per_filing(facts: pd.DataFrame) -> pd.Series:
+        return facts.sort_values("end").drop_duplicates("filed", keep="last").set_index("filed")["val"]
+
+    cover = latest_per_filing(extract_instant_facts(dei.get("EntityCommonStockSharesOutstanding", {})))
+    balance = latest_per_filing(extract_instant_facts(us_gaap.get("CommonStockSharesOutstanding", {})))
+    shares = cover.combine_first(balance) if not cover.empty else balance
+    return shares.rename("shares").rename_axis("filed").reset_index()
+
+
+def fundamentals_from_facts(
+    us_gaap: dict, eps_quarterly: pd.DataFrame, eps_annual: pd.DataFrame, dei: dict | None = None
+) -> pd.DataFrame:
+    """Combine as-filed EPS facts (from `first_usable_eps`) with net income,
+    stockholders' equity and shares outstanding into one row per fiscal
+    period: [report_date, period_end, period, eps, book_value, roe, shares],
+    sorted by `period_end`. `book_value` and `roe` are for the period's end
+    date; `shares` is the count reported by the filing the row comes from."""
     ni_quarterly, ni_annual = extract_duration_facts(us_gaap.get("NetIncomeLoss", {}))
     ni_q = fill_missing_q4(ni_quarterly, ni_annual)  # company totals: no share basis, safe to combine here
     equity_q = extract_instant_facts(us_gaap.get("StockholdersEquity", {}))
@@ -53,10 +83,12 @@ def fundamentals_from_facts(us_gaap: dict, eps_quarterly: pd.DataFrame, eps_annu
     result = result.merge(equity_q[["end", "val"]].rename(columns={"val": "book_value"}), on="end", how="left")
     result["roe"] = result["ttm_net_income"] / result["book_value"]
 
+    result = result.merge(shares_by_filing(dei or {}, us_gaap), on="filed", how="left")
+
     result = result.rename(columns={"filed": "report_date", "end": "period_end"})
     result["report_date"] = pd.to_datetime(result["report_date"])
     result = result.sort_values(["period_end", "period"]).reset_index(drop=True)
-    return result[["report_date", "period_end", "period", "eps", "book_value", "roe"]]
+    return result[["report_date", "period_end", "period", "eps", "book_value", "roe", "shares"]]
 
 
 def fill_missing_q4(quarterly: pd.DataFrame, annual: pd.DataFrame) -> pd.DataFrame:

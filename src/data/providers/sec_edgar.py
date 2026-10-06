@@ -41,7 +41,7 @@ CIK_OVERRIDES = {
 
 
 class SecEdgarProvider:
-    """TTM EPS, book value and ROE per filing, from SEC company facts.
+    """EPS, book value, ROE and shares outstanding per filing, from SEC company facts.
 
     A ticker SEC has no CIK for, or with no usable EPS concept, is an empty
     answer; network errors raise. Some tickers genuinely have no usable EPS
@@ -92,7 +92,7 @@ class SecEdgarProvider:
             )
             return empty_fundamentals()
         _logger.info("%s: using %s for EPS (%d quarterly observations)", ticker, eps_concept_used, len(eps_q))
-        return fundamentals_from_facts(us_gaap, eps_q, eps_annual)
+        return fundamentals_from_facts(us_gaap, eps_q, eps_annual, facts.get("facts", {}).get("dei", {}))
 
 
 def sec_get(url: str) -> dict:

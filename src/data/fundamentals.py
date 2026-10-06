@@ -112,7 +112,7 @@ def load_fundamentals(
     skiplist.save()
 
     if not frames:
-        return pd.DataFrame(columns=["date", "ticker", "report_date", "earnings", "book_value", "roe"])
+        return pd.DataFrame(columns=["date", "ticker", "report_date", "earnings", "book_value", "roe", "shares_outstanding"])
     out = pd.concat(frames, ignore_index=True)
     return out.sort_values(["ticker", "report_date"]).reset_index(drop=True)
 
@@ -127,4 +127,4 @@ def _lag_and_window(
     # included — this is what keeps a lagged fundamentals row from leaking
     # past the requested window.
     mask = (raw["date"] >= start_ts) & (raw["date"] <= end_ts)
-    return raw.loc[mask, ["date", "ticker", "report_date", "earnings", "book_value", "roe"]]
+    return raw.loc[mask, ["date", "ticker", "report_date", "earnings", "book_value", "roe", "shares_outstanding"]]
