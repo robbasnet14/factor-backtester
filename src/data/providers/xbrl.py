@@ -62,14 +62,28 @@ def shares_by_filing(dei: dict, us_gaap: dict) -> pd.DataFrame:
     return shares.rename("shares").rename_axis("filed").reset_index()
 
 
+def public_float_by_filing(dei: dict) -> pd.DataFrame:
+    """The 10-K cover page's public float (dei:EntityPublicFloat: market value
+    of shares held by non-affiliates, in USD, as of the end of the filer's
+    second fiscal quarter), one row per filing date: [filed, public_float].
+    A dollar amount, so stock splits don't affect it. It's a reported
+    figure independent of the share count and price, which makes it a
+    cross-check on a market cap computed from them.
+    """
+    facts = extract_instant_facts(dei.get("EntityPublicFloat", {}))
+    latest = facts.sort_values("end").drop_duplicates("filed", keep="last")
+    return latest.rename(columns={"val": "public_float"})[["filed", "public_float"]]
+
+
 def fundamentals_from_facts(
     us_gaap: dict, eps_quarterly: pd.DataFrame, eps_annual: pd.DataFrame, dei: dict | None = None
 ) -> pd.DataFrame:
     """Combine as-filed EPS facts (from `first_usable_eps`) with net income,
     stockholders' equity and shares outstanding into one row per fiscal
-    period: [report_date, period_end, period, eps, book_value, roe, shares],
-    sorted by `period_end`. `book_value` and `roe` are for the period's end
-    date; `shares` is the count reported by the filing the row comes from."""
+    period: [report_date, period_end, period, eps, book_value, roe, shares,
+    public_float], sorted by `period_end`. `book_value` and `roe` are for the
+    period's end date; `shares` and `public_float` are as reported by the
+    filing the row comes from (public float only on 10-Ks)."""
     ni_quarterly, ni_annual = extract_duration_facts(us_gaap.get("NetIncomeLoss", {}))
     ni_q = fill_missing_q4(ni_quarterly, ni_annual)  # company totals: no share basis, safe to combine here
     equity_q = extract_instant_facts(us_gaap.get("StockholdersEquity", {}))
@@ -84,11 +98,12 @@ def fundamentals_from_facts(
     result["roe"] = result["ttm_net_income"] / result["book_value"]
 
     result = result.merge(shares_by_filing(dei or {}, us_gaap), on="filed", how="left")
+    result = result.merge(public_float_by_filing(dei or {}), on="filed", how="left")
 
     result = result.rename(columns={"filed": "report_date", "end": "period_end"})
     result["report_date"] = pd.to_datetime(result["report_date"])
     result = result.sort_values(["period_end", "period"]).reset_index(drop=True)
-    return result[["report_date", "period_end", "period", "eps", "book_value", "roe", "shares"]]
+    return result[["report_date", "period_end", "period", "eps", "book_value", "roe", "shares", "public_float"]]
 
 
 def fill_missing_q4(quarterly: pd.DataFrame, annual: pd.DataFrame) -> pd.DataFrame:

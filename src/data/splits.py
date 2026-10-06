@@ -42,7 +42,8 @@ def later_split_factor(splits: pd.Series, dates: pd.Series) -> pd.Series:
 def ttm_fundamentals(facts: pd.DataFrame, splits: pd.Series) -> pd.DataFrame:
     """Turn as-filed EPS facts [report_date, period_end, period, eps,
     book_value, roe, shares] (`period` "quarter" or "year") into one row per
-    filing date [report_date, earnings, book_value, roe, shares_outstanding],
+    filing date [report_date, earnings, book_value, roe, shares_outstanding,
+    public_float],
     where `earnings` is trailing-twelve-month EPS and `shares_outstanding`
     the filing's share count, both restated onto the share basis at the end
     of `splits`: per-share figures are divided by the later splits, share
@@ -69,6 +70,9 @@ def ttm_fundamentals(facts: pd.DataFrame, splits: pd.Series) -> pd.DataFrame:
     q["earnings"] = q["eps"].rolling(4).sum()  # TTM = trailing 4 single-quarter values
     per_filing = facts[["report_date", "shares"]].dropna().drop_duplicates("report_date")
     q = q.merge(per_filing.rename(columns={"shares": "shares_outstanding"}), on="report_date", how="left")
+    # Public float is a dollar amount: no restatement.
+    floats = facts[["report_date", "public_float"]] if "public_float" in facts else facts[["report_date"]].assign(public_float=float("nan"))
+    q = q.merge(floats.dropna().drop_duplicates("report_date"), on="report_date", how="left")
 
     # A single filing can bundle multiple historical periods in one document
     # (e.g. a 10-K's multi-year "selected quarterly data" table), so several
@@ -78,5 +82,5 @@ def ttm_fundamentals(facts: pd.DataFrame, splits: pd.Series) -> pd.DataFrame:
     # contradictory ones (ties in `filed` are broken by the newest period,
     # which is what "most recent filing" means once dates are tied).
     q = q.drop_duplicates(subset="report_date", keep="last")
-    columns = ["report_date", "earnings", "book_value", "roe", "shares_outstanding"]
+    columns = ["report_date", "earnings", "book_value", "roe", "shares_outstanding", "public_float"]
     return q[columns].sort_values("report_date").reset_index(drop=True)

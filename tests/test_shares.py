@@ -54,3 +54,18 @@ def test_market_cap_is_unchanged_by_restating_shares_and_price_across_a_split(tm
     close = prices.set_index("date").loc["2020-07-31", "close"]
 
     assert restated * close == pytest.approx(1000.0 * 400.0)  # as-filed shares x as-traded price
+
+
+def test_public_float_is_taken_per_10k_filing_and_not_restated_across_splits():
+    dei = {"EntityPublicFloat": {"units": {"USD": [
+        {"end": "2020-03-27", "filed": "2020-10-30", "val": 1.07e12, "form": "10-K"},
+    ]}}}
+    eps_q = pd.DataFrame({"end": pd.to_datetime(["2020-09-26"]), "filed": pd.to_datetime(["2020-10-30"]), "val": [0.73]})
+    eps_a = pd.DataFrame({"end": pd.Series(dtype="datetime64[ns]"), "filed": pd.Series(dtype="datetime64[ns]"), "val": pd.Series(dtype="float64")})
+
+    facts = fundamentals_from_facts({}, eps_q, eps_a, dei=dei)
+    splits = pd.Series(1.0, index=pd.bdate_range("2020-01-01", "2021-12-31"))
+    splits[pd.Timestamp("2021-06-01")] = 4.0  # a later split must not touch a dollar amount
+
+    assert facts["public_float"].iloc[0] == 1.07e12
+    assert ttm_fundamentals(facts, splits)["public_float"].iloc[0] == 1.07e12
