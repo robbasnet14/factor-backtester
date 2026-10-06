@@ -16,6 +16,7 @@ factors:
   value:    {enabled: true, metric: "earnings_yield"}
   quality:  {enabled: true, metric: "roe"}
   low_vol:  {enabled: false, window_days: 63}   # trailing daily-return volatility, window ending the day before rebalance
+  size:     {enabled: false, float_floor: 0.01, float_ceiling: 100}  # market cap; NaN unless floor <= cap/public float <= ceiling (see plugins/size.py)
 
 # ---- Portfolio ----
 portfolio:

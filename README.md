@@ -34,6 +34,10 @@ here.
   and ROE (quality); standardizes each date's cross-section and blends them. Earnings
   yield compares EPS and price per the same share: every quarter's EPS is restated across
   later stock splits, and the price is split-adjusted but not dividend-adjusted.
+- Two more factors ship as plugins, off by default: low volatility (trailing daily-return
+  volatility, window ending the day before each rebalance) and size (market cap from SEC
+  shares outstanding, cross-checked against reported public float). A factor is one file
+  in `src/features/plugins/`; the registry finds it, and `config.yaml` switches it on.
 - Goes long the top decile, short the bottom decile, rebalances monthly, and charges
   8 bps per trade based on turnover (or, with `cost_model: per_name`, a volatility-scaled
   cost per name). Only names that actually traded on the rebalance
@@ -134,7 +138,7 @@ src/
   backtest/   portfolio construction, cost model, engine, walk-forward
   analytics/  performance metrics, coverage report, equity-curve chart
 scripts/run_backtest.py   the entry point that wires it all together
-tests/        115 tests, network-mocked
+tests/        123 tests, network-mocked
 config.yaml   every knob (universe, dates, costs, factors, validation)
 ```
 
@@ -184,6 +188,21 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
   their history any more. They keep their cached prices for returns and momentum, but
   their EPS can't be restated, so they get no earnings yield (248 name-months) rather
   than one on a guessed share basis.
+- **Size covers 70.2% of universe name-months, and its exclusions are mostly data
+  errors.** Market cap (SEC shares outstanding x split-adjusted close) is set to NaN
+  unless it lies between 0.01x and 100x the company's latest reported public float.
+  That gate drops 1,219 name-months across 61 names (524 below, 695 above, including
+  359 where the reported float is zero); another 223 name-months across 10 names have a
+  reported share count of zero, and 3,190 across 280 names have no float to check
+  against (2,198 of them in the first 15 months, before the first 10-K in the window).
+  The bounds come from where errors and genuine values separate in this data, not from
+  a rule: real values reach 0.04x (a 96% fall since the float date) and 22x (founder
+  holdings outside SEC's float definition), while errors are orders of magnitude off
+  (counts scaled by 1,000 or 1,000,000, BRK.B's Class A count priced at the Class B
+  price). It can't catch smaller errors (ZTS sits at ~0.07x), and when the two figures
+  disagree it can't tell which is wrong: where the float is the bad one (HST, WAT), a
+  correct market cap is dropped. Multi-class companies are the structural limit: one
+  price series per ticker can't give sum(shares x price) across classes.
 - **Ticker symbols aren't permanent identifiers.** Sources reassign delisted symbols to
   new companies: re-downloading turned up several whose symbol now returns a different
   company's recent history, and the previous cache held a different security under COL.
@@ -213,7 +232,7 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
 python -m pytest tests/
 ```
 
-115 tests, all network-mocked except one opt-in live SEC integration check. They cover the
+123 tests, all network-mocked except one opt-in live SEC integration check. They cover the
 easy-to-get-wrong stuff: momentum's skip-month, the point-in-time fundamentals lag, the
 delisted-name universe, never holding a name on a date it didn't trade, EPS restated across
 splits (checked against AAPL's and NVDA's real filings), turnover cost math, the
@@ -233,4 +252,3 @@ For a step-by-step walkthrough of checking the tests and the real pipeline yours
 
 - A liquidity-based cost model (e.g. square-root impact on dollar volume), which needs
   volume data the loader doesn't store yet.
-- A couple more factors (low-vol, size) to see how the mix changes.
