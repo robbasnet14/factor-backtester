@@ -3,6 +3,7 @@ import time
 
 import pandas as pd
 import yfinance as yf
+from yfinance.exceptions import YFTickerMissingError
 
 from src.data.providers.base import empty_prices
 
@@ -23,27 +24,24 @@ class YahooProvider:
     every split up to today, so the download always runs through today —
     otherwise a split after `end` would be baked into `close` but missing
     from `split_ratio`. An unknown or delisted symbol comes back empty;
-    errors are retried with backoff and re-raised if they persist."""
+    errors are retried with backoff and re-raised if they persist (see
+    `_history` for why that takes more than calling `yf.download`)."""
 
     name = "yfinance"
 
     def fetch(self, ticker: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
         symbol = to_yahoo_symbol(ticker)
+        first_day = start.date().isoformat()
+        # Through today, not `end` (see the class docstring); yfinance's end is exclusive.
+        after_last_day = (max(end, pd.Timestamp.today().normalize()) + pd.Timedelta(days=1)).date().isoformat()
         df = None
         for attempt in range(_MAX_RETRIES):
             try:
-                df = yf.download(
-                    symbol,
-                    start=start.date().isoformat(),
-                    # Through today, not `end` (see the class docstring); yfinance's end is exclusive.
-                    end=(max(end, pd.Timestamp.today().normalize()) + pd.Timedelta(days=1)).date().isoformat(),
-                    auto_adjust=False,
-                    actions=True,
-                    progress=False,
-                    threads=False,
-                )
+                df = _history(symbol, first_day, after_last_day)
                 break
-            except Exception:
+            except Exception as e:
+                if _means_no_data(e):
+                    break
                 if attempt == _MAX_RETRIES - 1:
                     raise
                 time.sleep(_RETRY_BACKOFF_SECONDS * (attempt + 1))
@@ -53,9 +51,6 @@ class YahooProvider:
         if df is None or df.empty:
             return empty_prices()
 
-        if isinstance(df.columns, pd.MultiIndex):  # yfinance always uses (field, ticker) columns
-            df.columns = df.columns.get_level_values(0)
-
         out = df[["Adj Close", "Close", "Stock Splits"]].rename(
             columns={"Adj Close": "adj_close", "Close": "close", "Stock Splits": "split_ratio"}
         )
@@ -64,3 +59,29 @@ class YahooProvider:
         out = out.reset_index()
         out["date"] = pd.to_datetime(out["date"]).dt.tz_localize(None)
         return out[["date", "adj_close", "close", "split_ratio"]]
+
+
+def _history(symbol: str, first_day: str, after_last_day: str) -> pd.DataFrame:
+    """One symbol's daily history, with yfinance's errors raised.
+
+    By default yfinance catches every error per symbol (a rate limit, a
+    dropped connection), logs it and returns an empty frame, which looks
+    exactly like "Yahoo has no such ticker": `yf.download` does this
+    regardless of settings. Asked this way it raises instead, so a failure
+    can be told apart from no data (`_means_no_data`)."""
+    hide = yf.config.debug.hide_exceptions
+    yf.config.debug.hide_exceptions = False
+    try:
+        return yf.Ticker(symbol).history(start=first_day, end=after_last_day, auto_adjust=False, actions=True)
+    finally:
+        yf.config.debug.hide_exceptions = hide
+
+
+def _means_no_data(error: Exception) -> bool:
+    """Yahoo's ways of saying it has nothing: a symbol it marks "possibly
+    delisted" (no timezone, or no prices in the window), or one it has
+    never heard of (HTTP 404)."""
+    if isinstance(error, YFTickerMissingError):
+        return True
+    response = getattr(error, "response", None)
+    return getattr(response, "status_code", None) == 404

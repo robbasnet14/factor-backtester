@@ -10,4 +10,4 @@ requests>=2.32
 tqdm>=4.66
 pytest>=8.0
 pytest-cov>=7.0
-yfinance>=0.2
+yfinance>=1.5  # yf.config.debug.hide_exceptions, used to tell a failure from "no data"

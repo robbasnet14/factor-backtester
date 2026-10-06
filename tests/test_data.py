@@ -17,11 +17,10 @@ import warnings
 import pandas as pd
 import pytest
 import requests
-import yfinance as yf
 
 from src.data import fundamentals, prices
 from src.data.loader import default_price_providers, load_fundamentals, load_prices
-from src.data.providers import sec_edgar
+from src.data.providers import sec_edgar, yahoo
 from src.data.providers.tiingo import TiingoProvider
 from src.data.providers.yahoo import YahooProvider
 from src.data.universe import build_universe
@@ -43,11 +42,9 @@ class _FakeResponse:
 
 
 def _fake_yf_frame(dates: list[str], closes: list[float], symbol: str) -> pd.DataFrame:
-    """The shape yfinance returns with auto_adjust=False, actions=True (no splits here)."""
+    """The shape `Ticker.history` returns with auto_adjust=False, actions=True (no splits here)."""
     index = pd.DatetimeIndex(dates, name="Date")
-    fields = ["Adj Close", "Close", "Stock Splits"]
-    columns = pd.MultiIndex.from_tuples([(f, symbol) for f in fields], names=["Price", "Ticker"])
-    return pd.DataFrame([[c, c, 0.0] for c in closes], index=index, columns=columns)
+    return pd.DataFrame([[c, c, 0.0] for c in closes], index=index, columns=["Adj Close", "Close", "Stock Splits"])
 
 
 JAN_PRICES = {"2020-01-02": 10.0, "2020-01-03": 10.5, "2020-01-06": 11.0}
@@ -114,11 +111,11 @@ def test_load_prices_cached_delisted_name_is_not_refetched_when_yahoo_has_nothin
 
     calls, sleeps = [], []
 
-    def fake_download(symbol, **kwargs):
+    def fake_download(symbol, *dates):
         calls.append(symbol)
         return pd.DataFrame()
 
-    monkeypatch.setattr(yf, "download", fake_download)
+    monkeypatch.setattr(yahoo, "_history", fake_download)
     monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
 
     first = load_prices(["GONE"], "2020-01-01", "2020-01-10", cache_dir=str(tmp_path))
@@ -146,11 +143,11 @@ def test_load_prices_refetches_when_request_extends_past_recorded_range(default_
 def test_load_prices_maps_dot_ticker_to_yahoo_dash_symbol(monkeypatch, tmp_path):
     seen_symbols = []
 
-    def fake_download(symbol, **kwargs):
+    def fake_download(symbol, *dates):
         seen_symbols.append(symbol)
         return _fake_yf_frame(["2020-01-02"], [10.0], symbol)
 
-    monkeypatch.setattr(yf, "download", fake_download)
+    monkeypatch.setattr(yahoo, "_history", fake_download)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = load_prices(["BRK.B"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
@@ -173,13 +170,13 @@ def test_load_prices_skips_ticker_with_no_data(default_chain, tmp_path):
 def test_load_prices_retries_transient_network_error(monkeypatch, tmp_path):
     attempts = {"n": 0}
 
-    def flaky_download(symbol, **kwargs):
+    def flaky_download(symbol, *dates):
         attempts["n"] += 1
         if attempts["n"] < 3:
             raise ConnectionError("simulated transient network error")
         return _fake_yf_frame(["2020-01-02"], [10.0], symbol)
 
-    monkeypatch.setattr(yf, "download", flaky_download)
+    monkeypatch.setattr(yahoo, "_history", flaky_download)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
@@ -193,10 +190,10 @@ def test_load_prices_gives_up_after_max_retries(monkeypatch, tmp_path):
     # silently succeed via) the Tiingo fallback path with no key configured.
     monkeypatch.delenv("TIINGO_KEY", raising=False)
 
-    def always_fails(symbol, **kwargs):
+    def always_fails(symbol, *dates):
         raise ConnectionError("simulated persistent network error")
 
-    monkeypatch.setattr(yf, "download", always_fails)
+    monkeypatch.setattr(yahoo, "_history", always_fails)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.warns(UserWarning):
@@ -260,7 +257,7 @@ def test_default_chain_uses_tiingo_only_when_a_key_is_set(monkeypatch):
 
 def test_load_prices_falls_back_to_tiingo_when_yfinance_empty(monkeypatch, tmp_path, caplog):
     monkeypatch.setenv("TIINGO_KEY", "dummy")
-    monkeypatch.setattr(yf, "download", lambda symbol, **kwargs: pd.DataFrame())  # yfinance: nothing
+    monkeypatch.setattr(yahoo, "_history", lambda symbol, *dates: pd.DataFrame())  # yfinance: nothing
 
     tiingo_calls = []
 
@@ -287,7 +284,7 @@ def test_load_prices_falls_back_to_tiingo_when_yfinance_empty(monkeypatch, tmp_p
 def test_load_prices_tiingo_fallback_not_needed_when_yfinance_has_data(monkeypatch, tmp_path):
     # The common case: yfinance satisfies the request, so TIINGO_KEY is never required.
     monkeypatch.delenv("TIINGO_KEY", raising=False)
-    monkeypatch.setattr(yf, "download", lambda symbol, **kwargs: _fake_yf_frame(["2020-01-02"], [10.0], symbol))
+    monkeypatch.setattr(yahoo, "_history", lambda symbol, *dates: _fake_yf_frame(["2020-01-02"], [10.0], symbol))
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = load_prices(["aapl"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
@@ -297,7 +294,7 @@ def test_load_prices_tiingo_fallback_not_needed_when_yfinance_has_data(monkeypat
 
 def test_tiingo_429_retries_with_exponential_backoff(monkeypatch, tmp_path):
     monkeypatch.setenv("TIINGO_KEY", "dummy")
-    monkeypatch.setattr(yf, "download", lambda symbol, **kwargs: pd.DataFrame())
+    monkeypatch.setattr(yahoo, "_history", lambda symbol, *dates: pd.DataFrame())
 
     sleep_calls = []
     monkeypatch.setattr(time, "sleep", lambda s: sleep_calls.append(s))
@@ -322,7 +319,7 @@ def test_tiingo_429_retries_with_exponential_backoff(monkeypatch, tmp_path):
 
 def test_tiingo_404_is_a_real_skip_without_retry(monkeypatch, tmp_path):
     monkeypatch.setenv("TIINGO_KEY", "dummy")
-    monkeypatch.setattr(yf, "download", lambda symbol, **kwargs: pd.DataFrame())
+    monkeypatch.setattr(yahoo, "_history", lambda symbol, *dates: pd.DataFrame())
 
     attempts = {"n": 0}
 
@@ -691,9 +688,8 @@ def test_tiingo_close_is_split_adjusted_from_its_raw_close_and_split_factor(monk
 
 def test_yahoo_reports_splits_as_ratios_and_no_split_as_one(monkeypatch):
     index = pd.DatetimeIndex(["2020-08-28", "2020-08-31"], name="Date")
-    columns = pd.MultiIndex.from_tuples([(f, "AAPL") for f in ["Adj Close", "Close", "Stock Splits"]])
-    frame = pd.DataFrame([[120.0, 124.8, 0.0], [125.0, 129.0, 4.0]], index=index, columns=columns)
-    monkeypatch.setattr(yf, "download", lambda symbol, **kwargs: frame)
+    frame = pd.DataFrame([[120.0, 124.8, 0.0], [125.0, 129.0, 4.0]], index=index, columns=["Adj Close", "Close", "Stock Splits"])
+    monkeypatch.setattr(yahoo, "_history", lambda symbol, *dates: frame)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = YahooProvider().fetch("AAPL", pd.Timestamp("2020-08-28"), pd.Timestamp("2020-08-31"))
