@@ -1,4 +1,5 @@
 """Restating EPS across stock splits (factor_backtester/data/splits.py)."""
+
 import json
 from pathlib import Path
 
@@ -49,12 +50,14 @@ def test_split_factor_is_unknown_before_the_history_starts_or_when_it_has_gaps()
 
 def test_each_quarter_is_restated_only_by_splits_after_its_own_filing():
     # Q1-Q2 filed before a 4-for-1, Q3-Q4 after (already on the new basis as filed).
-    facts = _facts([
-        ("2020-05-01", "2020-03-31", "quarter", 4.0),
-        ("2020-08-01", "2020-06-30", "quarter", 4.0),
-        ("2020-11-01", "2020-09-30", "quarter", 1.0),
-        ("2021-02-01", "2020-12-31", "quarter", 1.0),
-    ])
+    facts = _facts(
+        [
+            ("2020-05-01", "2020-03-31", "quarter", 4.0),
+            ("2020-08-01", "2020-06-30", "quarter", 4.0),
+            ("2020-11-01", "2020-09-30", "quarter", 1.0),
+            ("2021-02-01", "2020-12-31", "quarter", 1.0),
+        ]
+    )
     ttm = ttm_fundamentals(facts, _split_history({"2020-09-15": 4.0}))
 
     assert ttm["earnings"].iloc[-1] == pytest.approx(4.0)  # 1 + 1 + 1 + 1, not 4 + 4 + 1 + 1
@@ -65,12 +68,14 @@ def test_each_quarter_is_restated_only_by_splits_after_its_own_filing():
 def test_q4_is_derived_after_restating_not_before():
     # Q4 appears only inside the fiscal-year total, which was filed after a
     # 4-for-1 split while Q1 was filed before it (NVDA FY2022's shape).
-    facts = _facts([
-        ("2021-05-26", "2021-05-02", "quarter", 3.03),
-        ("2021-08-20", "2021-08-01", "quarter", 0.94),
-        ("2021-11-22", "2021-10-31", "quarter", 0.97),
-        ("2022-03-18", "2022-01-30", "year", 3.85),
-    ])
+    facts = _facts(
+        [
+            ("2021-05-26", "2021-05-02", "quarter", 3.03),
+            ("2021-08-20", "2021-08-01", "quarter", 0.94),
+            ("2021-11-22", "2021-10-31", "quarter", 0.97),
+            ("2022-03-18", "2022-01-30", "year", 3.85),
+        ]
+    )
     ttm = ttm_fundamentals(facts, _split_history({"2021-07-20": 4.0}))
 
     assert ttm.set_index("report_date").loc["2022-03-18", "earnings"] == pytest.approx(3.85)
@@ -92,10 +97,10 @@ def test_aapl_ttm_eps_is_smooth_across_its_2020_split():
     restated = _ttm_from_sec_fixture("AAPL", _split_history({"2020-08-31": 4.0}))
 
     window = slice("2020-01-01", "2021-12-31")
-    assert (as_filed[window].pct_change().dropna() < -0.15).any()     # the old artifact
-    assert (restated[window].pct_change().dropna() > -0.10).all()     # gone after restating
-    assert restated["2020-10-30"] == pytest.approx(3.26, abs=0.01)   # FY2020; the 10-K reports $3.28 for the year
-    assert restated["2021-10-29"] == pytest.approx(5.61, abs=0.01)   # FY2021, matching the 10-K
+    assert (as_filed[window].pct_change().dropna() < -0.15).any()  # the old artifact
+    assert (restated[window].pct_change().dropna() > -0.10).all()  # gone after restating
+    assert restated["2020-10-30"] == pytest.approx(3.26, abs=0.01)  # FY2020; the 10-K reports $3.28 for the year
+    assert restated["2021-10-29"] == pytest.approx(5.61, abs=0.01)  # FY2021, matching the 10-K
 
 
 def test_nvda_ttm_eps_is_smooth_across_its_2021_split():

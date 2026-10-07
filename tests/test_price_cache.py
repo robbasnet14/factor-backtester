@@ -1,4 +1,5 @@
 """PriceCache: split-aware refreshes and the share basis of `close`."""
+
 import pandas as pd
 import pytest
 
@@ -31,8 +32,8 @@ def test_a_new_split_replaces_the_cached_series_instead_of_appending_to_it(tmp_p
     df = PriceCache(tmp_path).load(provider, "AAA", T("2020-01-01"), T("2020-01-16"))
 
     assert provider.calls[0][1] == T("2020-01-01")  # asked for the full span, not just the new dates
-    assert T("2020-01-02") not in set(df["date"])     # old-basis rows discarded, not mixed in
-    assert df["close"].max() < 60                     # everything on the new basis
+    assert T("2020-01-02") not in set(df["date"])  # old-basis rows discarded, not mixed in
+    assert df["close"].max() < 60  # everything on the new basis
     assert df.loc[df["date"] == T("2020-01-06"), "close"].item() == pytest.approx(51.0)
 
 
@@ -56,9 +57,9 @@ def test_close_is_returned_on_the_basis_in_effect_at_end(tmp_path):
 
     df = PriceCache(tmp_path).load(provider, "AAA", T("2020-01-01"), T("2020-01-31"))
 
-    assert df["close"].tolist() == [100.0, 104.0]       # as traded in January
-    assert df["adj_close"].tolist() == [25.0, 26.0]     # returns series untouched
-    assert (df["split_ratio"] == 1.0).all()             # no split inside the window
+    assert df["close"].tolist() == [100.0, 104.0]  # as traded in January
+    assert df["adj_close"].tolist() == [25.0, 26.0]  # returns series untouched
+    assert (df["split_ratio"] == 1.0).all()  # no split inside the window
 
 
 def test_a_legacy_cache_file_is_refreshed_into_the_new_format(tmp_path):
@@ -77,7 +78,7 @@ def test_a_legacy_file_no_source_can_refresh_comes_back_with_unknown_close(tmp_p
 
     df = PriceCache(tmp_path).load(FakePriceProvider("src"), "GONE", T("2020-01-01"), T("2020-01-03"))
 
-    assert df["adj_close"].tolist() == [5.0, 5.1]                  # returns still usable
+    assert df["adj_close"].tolist() == [5.0, 5.1]  # returns still usable
     assert df["close"].isna().all() and df["split_ratio"].isna().all()  # not guessed
     assert "close" not in pd.read_parquet(tmp_path / "prices" / "GONE.parquet").columns  # retried next run
 
@@ -86,12 +87,14 @@ def test_a_partial_answer_with_different_splits_never_replaces_the_cached_series
     # A delisted ticker the source has since reassigned: it returns only the
     # newcomer's recent history, with a split the cached company never had.
     _write_cached(tmp_path, "OLD", {"2015-01-02": 40.0, "2015-01-05": 41.0, "2016-06-30": 45.0})
-    provider = FakePriceProvider("src", {"OLD": {"2026-08-14": 184.0, "2026-08-17": 190.0}}, splits={"OLD": {"2026-08-17": 2.793}})
+    provider = FakePriceProvider(
+        "src", {"OLD": {"2026-08-14": 184.0, "2026-08-17": 190.0}}, splits={"OLD": {"2026-08-17": 2.793}}
+    )
 
     with pytest.warns(UserWarning, match="reused ticker"):
         df = PriceCache(tmp_path).load(provider, "OLD", T("2015-01-01"), T("2016-12-31"))
 
-    assert df["close"].tolist() == [40.0, 41.0, 45.0]   # untouched, and not rebased by the foreign split
+    assert df["close"].tolist() == [40.0, 41.0, 45.0]  # untouched, and not rebased by the foreign split
     assert len(pd.read_parquet(tmp_path / "prices" / "OLD.parquet")) == 3
 
 

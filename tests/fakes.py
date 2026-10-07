@@ -1,4 +1,5 @@
 """In-memory providers implementing the data-source Protocols, for tests."""
+
 import pandas as pd
 
 from factor_backtester.data.providers.base import empty_fundamentals, empty_prices
@@ -41,7 +42,9 @@ class FakeFundamentalsProvider:
     ...]}) and records every call; raises `error` instead if one is given
     (an exception for every ticker, or {ticker: exception} for some)."""
 
-    def __init__(self, name: str = "fake fundamentals", rows: dict | None = None, error: Exception | dict | None = None):
+    def __init__(
+        self, name: str = "fake fundamentals", rows: dict | None = None, error: Exception | dict | None = None
+    ):
         self.name = name
         self.rows = rows or {}
         self.error = error
@@ -70,6 +73,4 @@ def flat_split_history(tickers: list[str], start: str = "2010-01-01", end: str =
     """A `splits=` argument for `load_fundamentals` saying these tickers had
     no splits over [start, end]: every business day with split_ratio 1.0."""
     days = pd.bdate_range(start, end)
-    return pd.DataFrame(
-        [{"date": d, "ticker": t.upper(), "split_ratio": 1.0} for t in tickers for d in days]
-    )
+    return pd.DataFrame([{"date": d, "ticker": t.upper(), "split_ratio": 1.0} for t in tickers for d in days])

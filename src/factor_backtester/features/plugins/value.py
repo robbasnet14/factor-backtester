@@ -1,4 +1,5 @@
 """Value: higher earnings yield (cheaper per unit of earnings) scores higher."""
+
 import pandas as pd
 
 from factor_backtester.features.factors import value

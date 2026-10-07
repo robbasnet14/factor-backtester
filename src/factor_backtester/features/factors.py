@@ -7,6 +7,7 @@ first value; a ticker with no fundamentals yet is NaN until its first
 report) — `transforms.combine_factors` is responsible for aligning and
 averaging across those gaps, not this module.
 """
+
 import numpy as np
 import pandas as pd
 

@@ -56,5 +56,8 @@ jobs:
       - name: ruff check
         run: ruff check
 
+      - name: ruff format
+        run: ruff format --check
+
       - name: mypy
         run: mypy

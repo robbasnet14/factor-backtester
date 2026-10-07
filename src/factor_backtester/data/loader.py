@@ -6,6 +6,7 @@ caller-supplied `providers=` / `provider=` gets its own cache namespace and
 doesn't use the default sources' skiplist, since what they lack says
 nothing about yours.
 """
+
 from factor_backtester.data.fundamentals import default_fundamentals_provider, load_fundamentals
 from factor_backtester.data.prices import default_price_providers, load_prices
 

@@ -9,6 +9,7 @@ failing. Every test that can reach the Tiingo fallback path explicitly
 unsets TIINGO_KEY (or sets a dummy one) so behavior never depends on
 whatever happens to be in the host environment.
 """
+
 import json
 import logging
 import time
@@ -56,16 +57,20 @@ def default_chain(monkeypatch):
     """Replace the default price chain (normally Yahoo, then Tiingo) with fakes,
     so loader tests exercise default-chain behaviour — its cache paths and
     skiplist — without any network layer."""
+
     def install(*providers):
         monkeypatch.setattr(prices, "default_price_providers", lambda: tuple(providers))
+
     return install
 
 
 @pytest.fixture
 def default_fundamentals(monkeypatch):
     """Replace the default fundamentals provider (normally SEC EDGAR) with a fake."""
+
     def install(provider):
         monkeypatch.setattr(fundamentals, "default_fundamentals_provider", lambda cache_dir: provider)
+
     return install
 
 
@@ -107,7 +112,12 @@ def test_load_prices_cached_delisted_name_is_not_refetched_when_yahoo_has_nothin
     # for it, but the cached data must still be served — and asked for only once.
     (tmp_path / "prices").mkdir()
     pd.DataFrame(
-        {"date": pd.to_datetime(["2020-01-02", "2020-01-03"]), "adj_close": [5.0, 5.1], "close": [5.0, 5.1], "split_ratio": [1.0, 1.0]}
+        {
+            "date": pd.to_datetime(["2020-01-02", "2020-01-03"]),
+            "adj_close": [5.0, 5.1],
+            "close": [5.0, 5.1],
+            "split_ratio": [1.0, 1.0],
+        }
     ).to_parquet(tmp_path / "prices" / "GONE.parquet", index=False)
 
     calls, sleeps = [], []
@@ -153,8 +163,8 @@ def test_load_prices_maps_dot_ticker_to_yahoo_dash_symbol(monkeypatch, tmp_path)
 
     df = load_prices(["BRK.B"], "2020-01-02", "2020-01-06", cache_dir=str(tmp_path))
 
-    assert seen_symbols == ["BRK-B"]         # Yahoo's symbol was used for the actual call
-    assert set(df["ticker"]) == {"BRK.B"}    # but the original spelling comes back to the caller
+    assert seen_symbols == ["BRK-B"]  # Yahoo's symbol was used for the actual call
+    assert set(df["ticker"]) == {"BRK.B"}  # but the original spelling comes back to the caller
 
 
 def test_load_prices_skips_ticker_with_no_data(default_chain, tmp_path):
@@ -308,7 +318,9 @@ def test_tiingo_429_retries_with_exponential_backoff(monkeypatch, tmp_path):
         attempts["n"] += 1
         if attempts["n"] < 3:
             return _FakeResponse(status_code=429)
-        return _FakeResponse(json_data=[{"date": "2020-01-02T00:00:00.000Z", "close": 10.0, "adjClose": 55.0, "splitFactor": 1.0}])
+        return _FakeResponse(
+            json_data=[{"date": "2020-01-02T00:00:00.000Z", "close": 10.0, "adjClose": 55.0, "splitFactor": 1.0}]
+        )
 
     monkeypatch.setattr(requests, "get", fake_get)
 
@@ -348,22 +360,76 @@ def test_load_fundamentals_lags_report_date(monkeypatch, tmp_path):
                 "EarningsPerShareDiluted": {
                     "units": {
                         "USD/shares": [
-                            {"end": "2019-03-31", "start": "2019-01-01", "filed": "2019-05-01", "val": 1.0, "form": "10-Q"},
-                            {"end": "2019-06-30", "start": "2019-04-01", "filed": "2019-08-01", "val": 1.1, "form": "10-Q"},
-                            {"end": "2019-09-30", "start": "2019-07-01", "filed": "2019-11-01", "val": 1.2, "form": "10-Q"},
-                            {"end": "2019-12-31", "start": "2019-10-01", "filed": "2020-02-01", "val": 1.3, "form": "10-K"},
+                            {
+                                "end": "2019-03-31",
+                                "start": "2019-01-01",
+                                "filed": "2019-05-01",
+                                "val": 1.0,
+                                "form": "10-Q",
+                            },
+                            {
+                                "end": "2019-06-30",
+                                "start": "2019-04-01",
+                                "filed": "2019-08-01",
+                                "val": 1.1,
+                                "form": "10-Q",
+                            },
+                            {
+                                "end": "2019-09-30",
+                                "start": "2019-07-01",
+                                "filed": "2019-11-01",
+                                "val": 1.2,
+                                "form": "10-Q",
+                            },
+                            {
+                                "end": "2019-12-31",
+                                "start": "2019-10-01",
+                                "filed": "2020-02-01",
+                                "val": 1.3,
+                                "form": "10-K",
+                            },
                             # a 9-month YTD duration for the same concept must NOT be treated as a quarter
-                            {"end": "2019-09-30", "start": "2019-01-01", "filed": "2019-11-01", "val": 3.3, "form": "10-Q"},
+                            {
+                                "end": "2019-09-30",
+                                "start": "2019-01-01",
+                                "filed": "2019-11-01",
+                                "val": 3.3,
+                                "form": "10-Q",
+                            },
                         ]
                     }
                 },
                 "NetIncomeLoss": {
                     "units": {
                         "USD": [
-                            {"end": "2019-03-31", "start": "2019-01-01", "filed": "2019-05-01", "val": 100.0, "form": "10-Q"},
-                            {"end": "2019-06-30", "start": "2019-04-01", "filed": "2019-08-01", "val": 110.0, "form": "10-Q"},
-                            {"end": "2019-09-30", "start": "2019-07-01", "filed": "2019-11-01", "val": 120.0, "form": "10-Q"},
-                            {"end": "2019-12-31", "start": "2019-10-01", "filed": "2020-02-01", "val": 130.0, "form": "10-K"},
+                            {
+                                "end": "2019-03-31",
+                                "start": "2019-01-01",
+                                "filed": "2019-05-01",
+                                "val": 100.0,
+                                "form": "10-Q",
+                            },
+                            {
+                                "end": "2019-06-30",
+                                "start": "2019-04-01",
+                                "filed": "2019-08-01",
+                                "val": 110.0,
+                                "form": "10-Q",
+                            },
+                            {
+                                "end": "2019-09-30",
+                                "start": "2019-07-01",
+                                "filed": "2019-11-01",
+                                "val": 120.0,
+                                "form": "10-Q",
+                            },
+                            {
+                                "end": "2019-12-31",
+                                "start": "2019-10-01",
+                                "filed": "2020-02-01",
+                                "val": 130.0,
+                                "form": "10-K",
+                            },
                         ]
                     }
                 },
@@ -382,7 +448,9 @@ def test_load_fundamentals_lags_report_date(monkeypatch, tmp_path):
     monkeypatch.setattr(requests, "get", fake_get)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
-    df = load_fundamentals(["aapl"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["aapl"]))
+    df = load_fundamentals(
+        ["aapl"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["aapl"])
+    )
 
     # Two report events land inside the lagged date window: the Q3 2019 filing
     # (not enough trailing quarters yet -> NaN TTM) and the Q4/FY 10-K (the
@@ -408,7 +476,14 @@ def test_load_fundamentals_skips_ticker_with_no_cik(monkeypatch, tmp_path):
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
     with pytest.warns(UserWarning):
-        df = load_fundamentals(["nosuchticker"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["nosuchticker"]))
+        df = load_fundamentals(
+            ["nosuchticker"],
+            "2020-01-01",
+            "2020-12-31",
+            lag_days=90,
+            cache_dir=str(tmp_path),
+            splits=flat_split_history(["nosuchticker"]),
+        )
 
     assert df.empty
 
@@ -417,7 +492,14 @@ def test_load_fundamentals_never_caches_an_empty_result_as_parquet(default_funda
     default_fundamentals(FakeFundamentalsProvider())  # always empty
 
     with pytest.warns(UserWarning):
-        load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
+        load_fundamentals(
+            ["aaa"],
+            "2020-01-01",
+            "2020-12-31",
+            lag_days=90,
+            cache_dir=str(tmp_path),
+            splits=flat_split_history(["aaa"]),
+        )
 
     assert not (tmp_path / "fundamentals" / "AAA.parquet").exists()  # a failed fetch must not be cached
 
@@ -427,7 +509,14 @@ def test_load_fundamentals_skiplists_permanent_failure_and_skips_network_on_reru
     default_fundamentals(provider)
 
     with pytest.warns(UserWarning):
-        load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
+        load_fundamentals(
+            ["aaa"],
+            "2020-01-01",
+            "2020-12-31",
+            lag_days=90,
+            cache_dir=str(tmp_path),
+            splits=flat_split_history(["aaa"]),
+        )
     assert len(provider.calls) == 1
     skiplist_path = tmp_path / "unavailable_fundamentals.json"
     assert skiplist_path.exists()
@@ -437,13 +526,28 @@ def test_load_fundamentals_skiplists_permanent_failure_and_skips_network_on_reru
     # nothing was even attempted this time.
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        df = load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
+        df = load_fundamentals(
+            ["aaa"],
+            "2020-01-01",
+            "2020-12-31",
+            lag_days=90,
+            cache_dir=str(tmp_path),
+            splits=flat_split_history(["aaa"]),
+        )
     assert len(provider.calls) == 1
     assert df.empty
 
     # force_refresh=True bypasses the skiplist and re-attempts the network call.
     with pytest.warns(UserWarning):
-        load_fundamentals(["aaa"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), force_refresh=True, splits=flat_split_history(["aaa"]))
+        load_fundamentals(
+            ["aaa"],
+            "2020-01-01",
+            "2020-12-31",
+            lag_days=90,
+            cache_dir=str(tmp_path),
+            force_refresh=True,
+            splits=flat_split_history(["aaa"]),
+        )
     assert len(provider.calls) == 2
 
 
@@ -478,7 +582,9 @@ def test_load_fundamentals_dedupes_multiple_periods_sharing_one_filing_date(monk
     monkeypatch.setattr(requests, "get", fake_get)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
-    df = load_fundamentals(["aaa"], "2016-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
+    df = load_fundamentals(
+        ["aaa"], "2016-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"])
+    )
 
     # All 5 rows share report_date=2016-10-20; only one may survive.
     matches = df[df["report_date"] == pd.Timestamp("2016-10-20")]
@@ -559,7 +665,9 @@ def test_load_fundamentals_falls_back_through_eps_concept_chain(monkeypatch, tmp
     monkeypatch.setattr(requests, "get", fake_get)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
-    df = load_fundamentals(["aaa"], "2019-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
+    df = load_fundamentals(
+        ["aaa"], "2019-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"])
+    )
 
     assert not df.empty
     row = df[df["report_date"] == pd.Timestamp("2020-01-01")].iloc[0]
@@ -594,7 +702,9 @@ def test_load_fundamentals_derives_missing_q4_from_annual_minus_first_three_quar
     monkeypatch.setattr(requests, "get", fake_get)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
-    df = load_fundamentals(["aaa"], "2019-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
+    df = load_fundamentals(
+        ["aaa"], "2019-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"])
+    )
 
     # Derived Q4 = 5.0 (FY) - (1.0 + 1.0 + 1.0) = 2.0; TTM at the 10-K's report_date = 1+1+1+2 = 5.0.
     row = df[df["report_date"] == pd.Timestamp("2020-01-01")].iloc[0]
@@ -612,7 +722,14 @@ def test_load_fundamentals_logs_when_sec_returns_no_facts(monkeypatch, tmp_path,
 
     caplog.set_level(logging.INFO)
     with pytest.warns(UserWarning):
-        df = load_fundamentals(["emptyco"], "2020-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["emptyco"]))
+        df = load_fundamentals(
+            ["emptyco"],
+            "2020-01-01",
+            "2020-12-31",
+            lag_days=90,
+            cache_dir=str(tmp_path),
+            splits=flat_split_history(["emptyco"]),
+        )
 
     assert df.empty  # an empty result here is never silent — it's logged, not just a quiet empty frame
     assert any("no us-gaap facts" in r.message for r in caplog.records)
@@ -620,14 +737,18 @@ def test_load_fundamentals_logs_when_sec_returns_no_facts(monkeypatch, tmp_path,
 
 def test_load_fundamentals_date_filter_excludes_rows_lagged_past_end(default_fundamentals, tmp_path):
     report_dates = ["2019-05-01", "2019-08-01", "2019-11-01", "2020-01-01", "2020-02-01"]
-    default_fundamentals(FakeFundamentalsProvider(rows={
-        "AAA": [{"report_date": d, "eps": 1.0, "book_value": 10.0, "roe": 0.1} for d in report_dates]
-    }))
+    default_fundamentals(
+        FakeFundamentalsProvider(
+            rows={"AAA": [{"report_date": d, "eps": 1.0, "book_value": 10.0, "roe": 0.1} for d in report_dates]}
+        )
+    )
 
     # lag_days=10: the 2020-01-01 filing lands at date=2020-01-11 (<= end, kept);
     # the 2020-02-01 filing lands at date=2020-02-11 (> end, must be excluded).
     end = "2020-01-15"
-    df = load_fundamentals(["aaa"], "2019-01-01", end, lag_days=10, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"]))
+    df = load_fundamentals(
+        ["aaa"], "2019-01-01", end, lag_days=10, cache_dir=str(tmp_path), splits=flat_split_history(["aaa"])
+    )
 
     assert (df["date"] <= pd.Timestamp(end)).all()
     assert pd.Timestamp("2020-02-01") not in df["report_date"].values
@@ -643,7 +764,14 @@ def test_load_fundamentals_real_aapl_returns_nonempty_2019_2020(tmp_path):
     if the network is unreachable.
     """
     try:
-        df = load_fundamentals(["AAPL"], "2019-01-01", "2020-12-31", lag_days=90, cache_dir=str(tmp_path), splits=flat_split_history(["AAPL"]))
+        df = load_fundamentals(
+            ["AAPL"],
+            "2019-01-01",
+            "2020-12-31",
+            lag_days=90,
+            cache_dir=str(tmp_path),
+            splits=flat_split_history(["AAPL"]),
+        )
     except (requests.exceptions.RequestException, OSError) as e:
         pytest.skip(f"network unavailable for SEC EDGAR integration check: {e}")
 
@@ -653,11 +781,7 @@ def test_load_fundamentals_real_aapl_returns_nonempty_2019_2020(tmp_path):
 
 
 def test_build_universe_includes_delisted_names(monkeypatch, tmp_path):
-    csv_bytes = (
-        b"date,tickers\n"
-        b'2010-01-04,"AAA,BBB-201006"\n'
-        b'2010-07-01,"AAA,CCC"\n'
-    )
+    csv_bytes = b'date,tickers\n2010-01-04,"AAA,BBB-201006"\n2010-07-01,"AAA,CCC"\n'
 
     monkeypatch.setattr(requests, "get", lambda url, timeout=None: _FakeResponse(content=csv_bytes))
 
@@ -679,7 +803,9 @@ def test_tiingo_close_is_split_adjusted_from_its_raw_close_and_split_factor(monk
         {"date": "2020-08-28T00:00:00.000Z", "close": 500.0, "adjClose": 120.0, "splitFactor": 1.0},
         {"date": "2020-08-31T00:00:00.000Z", "close": 129.0, "adjClose": 125.0, "splitFactor": 4.0},
     ]
-    monkeypatch.setattr(requests, "get", lambda url, headers=None, params=None, timeout=None: _FakeResponse(json_data=rows))
+    monkeypatch.setattr(
+        requests, "get", lambda url, headers=None, params=None, timeout=None: _FakeResponse(json_data=rows)
+    )
     monkeypatch.setattr(time, "sleep", lambda s: None)
 
     df = TiingoProvider().fetch("AAPL", pd.Timestamp("2020-08-28"), pd.Timestamp("2020-08-31"))
@@ -691,7 +817,9 @@ def test_tiingo_close_is_split_adjusted_from_its_raw_close_and_split_factor(monk
 
 def test_yahoo_reports_splits_as_ratios_and_no_split_as_one(monkeypatch):
     index = pd.DatetimeIndex(["2020-08-28", "2020-08-31"], name="Date")
-    frame = pd.DataFrame([[120.0, 124.8, 0.0], [125.0, 129.0, 4.0]], index=index, columns=["Adj Close", "Close", "Stock Splits"])
+    frame = pd.DataFrame(
+        [[120.0, 124.8, 0.0], [125.0, 129.0, 4.0]], index=index, columns=["Adj Close", "Close", "Stock Splits"]
+    )
     monkeypatch.setattr(yahoo, "_history", lambda symbol, *dates: frame)
     monkeypatch.setattr(time, "sleep", lambda s: None)
 

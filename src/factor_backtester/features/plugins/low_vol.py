@@ -7,6 +7,7 @@ window. A name without a full window is NaN. The score is minus that
 volatility: low volatility is the attractive end (see the registry's sign
 convention).
 """
+
 import pandas as pd
 
 from factor_backtester.features.factors import _pivot_prices_wide

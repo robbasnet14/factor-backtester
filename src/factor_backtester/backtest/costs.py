@@ -1,4 +1,5 @@
 """Transaction cost model."""
+
 import pandas as pd
 
 COST_MODELS = ("flat", "per_name")
@@ -70,9 +71,7 @@ def per_name_cost_bps(
     return (base_bps * relative).fillna(base_bps)
 
 
-def build_costs(
-    cost_cfg: dict, daily_prices: pd.DataFrame, rebalance_dates: pd.Index
-) -> float | pd.DataFrame:
+def build_costs(cost_cfg: dict, daily_prices: pd.DataFrame, rebalance_dates: pd.Index) -> float | pd.DataFrame:
     """Cost input for `run_backtest` from the `costs` section of config.yaml:
     the flat bps (cost_model: flat, the default) or a per-name cost frame
     (cost_model: per_name)."""

@@ -27,6 +27,7 @@ provider must return every split its `close` is adjusted for, as
 `split_ratio` on the split date (4.0 for a 4-for-1), even ones after `end`,
 so per-share figures can be restated onto exactly the same basis.
 """
+
 from typing import Protocol
 
 import pandas as pd

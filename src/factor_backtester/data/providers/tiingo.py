@@ -1,5 +1,6 @@
 """Tiingo daily prices — much better coverage of long-delisted tickers than
 Yahoo, but needs an API key (`TIINGO_KEY` env var)."""
+
 import logging
 import os
 import time
@@ -69,7 +70,9 @@ def _get(url: str, params: dict) -> list:
             last_error = requests.HTTPError(f"429 rate limited fetching {url}")
             if attempt < _MAX_RETRIES - 1:
                 backoff = _RETRY_BASE_SECONDS * (2**attempt)
-                _logger.info("Tiingo rate limit hit; waiting %ds before retry %d/%d", backoff, attempt + 2, _MAX_RETRIES)
+                _logger.info(
+                    "Tiingo rate limit hit; waiting %ds before retry %d/%d", backoff, attempt + 2, _MAX_RETRIES
+                )
                 time.sleep(backoff)
                 continue
             raise last_error

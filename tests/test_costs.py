@@ -1,4 +1,5 @@
 """Flat vs. per-name (volatility-scaled) cost models."""
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -42,7 +43,7 @@ def test_per_name_diverges_from_flat_and_charges_volatile_names_more():
     per_name = build_costs(PER_NAME, prices, weights.index)
     row = per_name.loc[REBALANCE[0]]
 
-    assert row["MID"] == pytest.approx(8.0)    # the median name pays the flat rate
+    assert row["MID"] == pytest.approx(8.0)  # the median name pays the flat rate
     assert row["HIGH"] == pytest.approx(24.0)  # 3x the vol, 3x the cost
     assert row["LOW"] == pytest.approx(4.0)
     # Opening the book: half of |dw| per name, each at its own cost.
@@ -72,7 +73,9 @@ def test_per_name_cost_uses_only_prices_up_to_the_rebalance_date():
     before = per_name_cost_bps(prices, REBALANCE, base_bps=8)
 
     shocked = prices.copy()
-    shocked.loc["2020-02-03":, "LOW"] *= np.linspace(1.0, 5.0, len(shocked.loc["2020-02-03":]))  # wild moves after Jan 31
+    shocked.loc["2020-02-03":, "LOW"] *= np.linspace(
+        1.0, 5.0, len(shocked.loc["2020-02-03":])
+    )  # wild moves after Jan 31
     after = per_name_cost_bps(shocked, REBALANCE, base_bps=8)
 
     pd.testing.assert_series_equal(before.loc[REBALANCE[0]], after.loc[REBALANCE[0]])
@@ -81,7 +84,7 @@ def test_per_name_cost_uses_only_prices_up_to_the_rebalance_date():
 
 def test_name_without_a_full_volatility_window_pays_the_flat_rate():
     prices = _prices({"LOW": 0.005, "MID": 0.01, "HIGH": 0.03})
-    prices.loc[: "2020-01-02", "HIGH"] = np.nan  # listed ~20 trading days before the first rebalance
+    prices.loc[:"2020-01-02", "HIGH"] = np.nan  # listed ~20 trading days before the first rebalance
 
     costs = per_name_cost_bps(prices, REBALANCE, base_bps=8)
 

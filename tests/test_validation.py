@@ -1,4 +1,5 @@
 """Sanity checks for Step 7: walk-forward folds + purge/embargo stitching."""
+
 from itertools import pairwise
 
 import numpy as np
@@ -50,9 +51,14 @@ def test_stitched_series_excludes_embargo_dates_and_has_no_duplicates():
     forward_returns = pd.DataFrame({"A": [0.01] * 48}, index=dates)
 
     stitched, folds = walk_forward_backtest(
-        weights, forward_returns, cost_bps=0,
-        start="2010-01-01", end="2014-01-01",
-        initial_train_months=24, test_months=12, embargo_months=1,
+        weights,
+        forward_returns,
+        cost_bps=0,
+        start="2010-01-01",
+        end="2014-01-01",
+        initial_train_months=24,
+        test_months=12,
+        embargo_months=1,
     )
 
     assert not stitched.index.duplicated().any()
@@ -75,9 +81,14 @@ def test_first_period_of_each_fold_costed_from_flat():
     forward_returns = pd.DataFrame({"A": [0.0] * 48, "B": [0.0] * 48}, index=dates)
 
     stitched, folds = walk_forward_backtest(
-        weights, forward_returns, cost_bps=100,
-        start="2010-01-01", end="2014-01-01",
-        initial_train_months=24, test_months=12, embargo_months=1,
+        weights,
+        forward_returns,
+        cost_bps=100,
+        start="2010-01-01",
+        end="2014-01-01",
+        initial_train_months=24,
+        test_months=12,
+        embargo_months=1,
     )
     first_test_date = folds[1]["test_start"]
     # weights are unchanged across the whole series, so if the fold were NOT
@@ -96,9 +107,14 @@ def test_stitched_metrics_computed_only_on_oos_series():
     forward_returns = pd.DataFrame({"A": rng.normal(0.01, 0.02, 48)}, index=dates)
 
     stitched, _ = walk_forward_backtest(
-        weights, forward_returns, cost_bps=0,
-        start="2010-01-01", end="2014-01-01",
-        initial_train_months=24, test_months=12, embargo_months=1,
+        weights,
+        forward_returns,
+        cost_bps=0,
+        start="2010-01-01",
+        end="2014-01-01",
+        initial_train_months=24,
+        test_months=12,
+        embargo_months=1,
     )
     full_sample_sharpe = sharpe(forward_returns["A"], periods_per_year=12)
     oos_sharpe = sharpe(stitched, periods_per_year=12)

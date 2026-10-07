@@ -1,4 +1,5 @@
 """Sanity checks for Step 3: factors + cross-sectional standardization."""
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -50,9 +51,30 @@ def test_value_earnings_yield_uses_latest_report_and_price():
     prices = _long_prices({"AAA": [100.0] * len(MONTH_ENDS), "BBB": [50.0] * len(MONTH_ENDS)})
     fundamentals = pd.DataFrame(
         [
-            {"date": pd.Timestamp("2020-02-15"), "ticker": "AAA", "report_date": pd.Timestamp("2019-12-31"), "earnings": 4.0, "book_value": 20.0, "roe": 0.1},
-            {"date": pd.Timestamp("2020-05-15"), "ticker": "AAA", "report_date": pd.Timestamp("2020-03-31"), "earnings": 5.0, "book_value": 21.0, "roe": 0.11},
-            {"date": pd.Timestamp("2020-02-15"), "ticker": "BBB", "report_date": pd.Timestamp("2019-12-31"), "earnings": 2.5, "book_value": 10.0, "roe": 0.2},
+            {
+                "date": pd.Timestamp("2020-02-15"),
+                "ticker": "AAA",
+                "report_date": pd.Timestamp("2019-12-31"),
+                "earnings": 4.0,
+                "book_value": 20.0,
+                "roe": 0.1,
+            },
+            {
+                "date": pd.Timestamp("2020-05-15"),
+                "ticker": "AAA",
+                "report_date": pd.Timestamp("2020-03-31"),
+                "earnings": 5.0,
+                "book_value": 21.0,
+                "roe": 0.11,
+            },
+            {
+                "date": pd.Timestamp("2020-02-15"),
+                "ticker": "BBB",
+                "report_date": pd.Timestamp("2019-12-31"),
+                "earnings": 2.5,
+                "book_value": 10.0,
+                "roe": 0.2,
+            },
         ]
     )
 
@@ -74,7 +96,16 @@ def test_value_uses_close_not_dividend_adjusted_price():
     prices = _long_prices({"AAA": [100.0] * len(MONTH_ENDS)})
     prices["adj_close"] = 80.0
     fundamentals = pd.DataFrame(
-        [{"date": pd.Timestamp("2020-02-15"), "ticker": "AAA", "report_date": pd.Timestamp("2019-12-31"), "earnings": 4.0, "book_value": 20.0, "roe": 0.1}]
+        [
+            {
+                "date": pd.Timestamp("2020-02-15"),
+                "ticker": "AAA",
+                "report_date": pd.Timestamp("2019-12-31"),
+                "earnings": 4.0,
+                "book_value": 20.0,
+                "roe": 0.1,
+            }
+        ]
     )
 
     ey = value(fundamentals, prices, metric="earnings_yield")
@@ -85,9 +116,30 @@ def test_value_uses_close_not_dividend_adjusted_price():
 def test_quality_roe_carries_forward_point_in_time():
     fundamentals = pd.DataFrame(
         [
-            {"date": pd.Timestamp("2020-02-15"), "ticker": "AAA", "report_date": pd.Timestamp("2019-12-31"), "earnings": 4.0, "book_value": 20.0, "roe": 0.10},
-            {"date": pd.Timestamp("2020-05-15"), "ticker": "AAA", "report_date": pd.Timestamp("2020-03-31"), "earnings": 5.0, "book_value": 21.0, "roe": 0.15},
-            {"date": pd.Timestamp("2020-08-15"), "ticker": "AAA", "report_date": pd.Timestamp("2020-06-30"), "earnings": 6.0, "book_value": 22.0, "roe": 0.20},
+            {
+                "date": pd.Timestamp("2020-02-15"),
+                "ticker": "AAA",
+                "report_date": pd.Timestamp("2019-12-31"),
+                "earnings": 4.0,
+                "book_value": 20.0,
+                "roe": 0.10,
+            },
+            {
+                "date": pd.Timestamp("2020-05-15"),
+                "ticker": "AAA",
+                "report_date": pd.Timestamp("2020-03-31"),
+                "earnings": 5.0,
+                "book_value": 21.0,
+                "roe": 0.15,
+            },
+            {
+                "date": pd.Timestamp("2020-08-15"),
+                "ticker": "AAA",
+                "report_date": pd.Timestamp("2020-06-30"),
+                "earnings": 6.0,
+                "book_value": 22.0,
+                "roe": 0.20,
+            },
         ]
     )
 

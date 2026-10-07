@@ -15,6 +15,7 @@ after its 2020 4-for-1 split, while its earnings didn't; deriving a Q4 as
 the fiscal-year total minus Q1-Q3 gave NVDA a loss of -$1.09 for the quarter
 after its 2021 split, when it earned $1.18.
 """
+
 from typing import cast
 
 import pandas as pd
@@ -73,7 +74,11 @@ def ttm_fundamentals(facts: pd.DataFrame, splits: pd.Series) -> pd.DataFrame:
     per_filing = facts[["report_date", "shares"]].dropna().drop_duplicates("report_date")
     q = q.merge(per_filing.rename(columns={"shares": "shares_outstanding"}), on="report_date", how="left")
     # Public float is a dollar amount: no restatement.
-    floats = facts[["report_date", "public_float"]] if "public_float" in facts else facts[["report_date"]].assign(public_float=float("nan"))
+    floats = (
+        facts[["report_date", "public_float"]]
+        if "public_float" in facts
+        else facts[["report_date"]].assign(public_float=float("nan"))
+    )
     q = q.merge(floats.dropna().drop_duplicates("report_date"), on="report_date", how="left")
 
     # A single filing can bundle multiple historical periods in one document

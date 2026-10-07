@@ -26,6 +26,7 @@ contribute factors, and nothing installs this one yet. If that changes, an
 entry-point group can feed the same `register_factor` without changing any
 factor.
 """
+
 import importlib
 import pkgutil
 from collections.abc import Callable, Mapping
@@ -101,7 +102,9 @@ def compute_factors(factor_cfg: Mapping[str, Mapping], inputs: Mapping[str, pd.D
     """
     unknown = [name for name in factor_cfg if name not in registered_factors()]
     if unknown:
-        raise KeyError(f"config.yaml names factor(s) {unknown} that aren't registered; registered factors: {registered_factors()}")
+        raise KeyError(
+            f"config.yaml names factor(s) {unknown} that aren't registered; registered factors: {registered_factors()}"
+        )
 
     frames = {}
     for name, cfg in factor_cfg.items():

@@ -29,6 +29,7 @@ What the gate can't do: catch errors smaller than two orders of magnitude
 two figures disagree. Where the float is the mis-scaled one (HST, WAT), a
 correct market cap is dropped. That is the cost of a cross-check.
 """
+
 from typing import cast
 
 import numpy as np

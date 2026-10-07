@@ -1,4 +1,5 @@
 """Low-volatility factor: orientation and the strictly-before window."""
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -31,15 +32,19 @@ def test_the_window_ends_strictly_before_the_rebalance_date():
     base = get_factor("low_vol").compute(prices, window_days=20).loc["2020-05-31", "AAA"]
 
     on_rebalance_day = prices.copy()
-    on_rebalance_day.loc[(on_rebalance_day["ticker"] == "AAA") & (on_rebalance_day["date"] == last_day), "adj_close"] *= 1.5
+    on_rebalance_day.loc[
+        (on_rebalance_day["ticker"] == "AAA") & (on_rebalance_day["date"] == last_day), "adj_close"
+    ] *= 1.5
     on_day_before = prices.copy()
     on_day_before.loc[(on_day_before["ticker"] == "AAA") & (on_day_before["date"] == day_before), "adj_close"] *= 1.5
 
-    assert get_factor("low_vol").compute(on_rebalance_day, window_days=20).loc["2020-05-31", "AAA"] == pytest.approx(base)
+    assert get_factor("low_vol").compute(on_rebalance_day, window_days=20).loc["2020-05-31", "AAA"] == pytest.approx(
+        base
+    )
     assert get_factor("low_vol").compute(on_day_before, window_days=20).loc["2020-05-31", "AAA"] != pytest.approx(base)
 
 
 def test_a_name_without_a_full_window_is_nan():
     scores = get_factor("low_vol").compute(_prices({"AAA": 0.01}), window_days=63)
-    assert np.isnan(scores.loc["2020-02-29", "AAA"])   # ~40 trading days in: not enough
+    assert np.isnan(scores.loc["2020-02-29", "AAA"])  # ~40 trading days in: not enough
     assert not np.isnan(scores.loc["2020-05-31", "AAA"])

@@ -1,6 +1,7 @@
 """Yahoo's failures have to reach the loader as exceptions: yfinance's
 default is to log them and return an empty frame, which reads as "no data"
 and gets a throttled ticker marked unavailable for good."""
+
 import time
 
 import pandas as pd

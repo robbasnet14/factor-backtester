@@ -1,4 +1,5 @@
 """Portfolio construction from factor scores."""
+
 from typing import cast
 
 import pandas as pd

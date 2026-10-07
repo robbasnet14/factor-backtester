@@ -1,4 +1,5 @@
 """Sanity checks for Steps 4-5: portfolio construction, costs, backtest engine."""
+
 import warnings
 
 import numpy as np
@@ -23,10 +24,10 @@ def test_decile_portfolios_long_short_is_dollar_neutral_and_ranked():
     weights = decile_portfolios(scores, n_deciles=10, long_short=True)
     row = weights.loc[DATES[0]]
 
-    assert row["T9"] == pytest.approx(1.0)   # top decile, long
+    assert row["T9"] == pytest.approx(1.0)  # top decile, long
     assert row["T0"] == pytest.approx(-1.0)  # bottom decile, short
     assert row.drop(["T0", "T9"]).eq(0.0).all()
-    assert row.sum() == pytest.approx(0.0)   # dollar-neutral
+    assert row.sum() == pytest.approx(0.0)  # dollar-neutral
 
 
 def test_decile_portfolios_long_only():
@@ -152,7 +153,7 @@ def _flat_daily_prices(names):
 def test_tradable_on_rebalance_requires_a_price_on_the_months_last_trading_day():
     daily = _flat_daily_prices(["LIVE", "STALE", "NONE"])
     daily.loc["2020-01-29":"2020-01-31", "STALE"] = np.nan  # last January trade 3 days before month-end
-    daily.loc["2020-01-01":"2020-01-31", "NONE"] = np.nan   # never traded in January
+    daily.loc["2020-01-01":"2020-01-31", "NONE"] = np.nan  # never traded in January
 
     tradable = tradable_on_rebalance(daily, pd.DatetimeIndex(["2020-01-31", "2020-04-30"]))
 
@@ -166,7 +167,9 @@ def test_name_with_no_entry_price_gets_no_weight_even_with_the_best_score():
     daily["X"] = np.nan  # delisted before January: nothing to buy it at on the rebalance date
     scores = pd.DataFrame([list(range(10)) + [99.0]], index=[DATES[0]], columns=names)  # X scores best
 
-    weights = decile_portfolios(scores, n_deciles=10, long_short=True, tradable=tradable_on_rebalance(daily, scores.index))
+    weights = decile_portfolios(
+        scores, n_deciles=10, long_short=True, tradable=tradable_on_rebalance(daily, scores.index)
+    )
     row = weights.loc[DATES[0]]
 
     assert row["X"] == 0.0
@@ -198,13 +201,15 @@ def test_name_that_delists_mid_holding_period_exits_at_last_trade_and_is_not_hel
     # MID has the best score on both rebalance dates (e.g. forward-filled fundamentals keep it scoring).
     scores = pd.DataFrame([list(range(10)) + [99.0]] * 2, index=DATES[:2], columns=names)
 
-    weights = decile_portfolios(scores, n_deciles=10, long_short=True, tradable=tradable_on_rebalance(daily, scores.index))
+    weights = decile_portfolios(
+        scores, n_deciles=10, long_short=True, tradable=tradable_on_rebalance(daily, scores.index)
+    )
     monthly = daily.resample("ME").last()
     forward_returns = monthly.pct_change(fill_method=None).shift(-1)
 
-    assert weights.loc[DATES[0], "MID"] > 0          # traded on January's rebalance date: held
+    assert weights.loc[DATES[0], "MID"] > 0  # traded on January's rebalance date: held
     assert forward_returns.loc[DATES[0], "MID"] == pytest.approx(80.0 / 100.0 - 1.0)  # exit at last trade
-    assert weights.loc[DATES[1], "MID"] == 0.0       # no price on February's rebalance date: not held
+    assert weights.loc[DATES[1], "MID"] == 0.0  # no price on February's rebalance date: not held
     assert weights.loc[DATES[1], "T9"] == pytest.approx(1.0)
 
 
@@ -221,4 +226,3 @@ def test_price_gap_stays_nan_in_forward_returns_so_the_engine_warns():
     assert DATES[2] not in forward_returns.index  # no realized forward return after the last date
     with pytest.warns(UserWarning, match="no exit price"):
         run_backtest(weights, forward_returns, cost_bps=0, prices=monthly)
-

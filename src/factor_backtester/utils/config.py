@@ -5,6 +5,7 @@ the config file, not to wherever the command is run from, so a run reads
 and writes the same places from any directory. Absolute paths, and paths
 starting with `~`, are used as given.
 """
+
 from pathlib import Path
 
 import yaml

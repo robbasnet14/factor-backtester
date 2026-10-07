@@ -1,4 +1,5 @@
 """Yahoo Finance prices via `yfinance` — free, no API key."""
+
 import time
 
 import pandas as pd

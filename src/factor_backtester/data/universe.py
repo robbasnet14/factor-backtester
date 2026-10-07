@@ -10,6 +10,7 @@ and is stripped here, since a ticker's presence in a row already means it
 was a member on that date — the actual removal is reflected by its absence
 from the next logged snapshot.
 """
+
 import re
 from pathlib import Path
 
@@ -17,8 +18,7 @@ import pandas as pd
 import requests
 
 _SP500_SOURCE_URL = (
-    "https://raw.githubusercontent.com/fja05680/sp500/master/"
-    "S%26P%20500%20Historical%20Components%20%26%20Changes.csv"
+    "https://raw.githubusercontent.com/fja05680/sp500/master/S%26P%20500%20Historical%20Components%20%26%20Changes.csv"
 )
 _DELISTING_SUFFIX = re.compile(r"-\d{6}$")
 _REQUEST_TIMEOUT = 30

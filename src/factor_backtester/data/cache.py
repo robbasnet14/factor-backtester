@@ -4,6 +4,7 @@ Caching is orthogonal to where data comes from, so it wraps providers rather
 than living inside them: any `PriceProvider` or `FundamentalsProvider` gets
 the same Parquet cache without knowing it exists.
 """
+
 import json
 import re
 import warnings

@@ -1,6 +1,7 @@
 """The public `providers=` / `provider=` extension point: any object meeting the
 provider contract can be plugged in, and a custom chain is isolated from the
 default chain's cache and skiplist."""
+
 import json
 import warnings
 
@@ -14,7 +15,7 @@ JAN = {"2020-01-02": 10.0, "2020-01-03": 10.5, "2020-01-06": 11.0}
 
 
 def test_chain_is_walked_in_order_and_the_first_provider_with_data_wins(tmp_path):
-    first = FakePriceProvider("first")                       # has nothing
+    first = FakePriceProvider("first")  # has nothing
     second = FakePriceProvider("second", {"AAA": JAN})
     third = FakePriceProvider("third", {"AAA": {"2020-01-02": 99.0}})
 
@@ -70,10 +71,17 @@ def test_custom_chain_ignores_the_default_skiplist(tmp_path):
 def test_custom_fundamentals_provider_ignores_the_default_skiplist(tmp_path):
     (tmp_path / "unavailable_fundamentals.json").write_text(json.dumps({"AAA": "2020-01-01T00:00:00+00:00"}))
     quarters = ["2019-04-15", "2019-07-15", "2019-10-15", "2020-01-15"]  # only the last lands in the window
-    mine = FakeFundamentalsProvider(rows={"AAA": [{"report_date": d, "eps": 0.25, "book_value": 10.0, "roe": 0.1} for d in quarters]})
+    mine = FakeFundamentalsProvider(
+        rows={"AAA": [{"report_date": d, "eps": 0.25, "book_value": 10.0, "roe": 0.1} for d in quarters]}
+    )
 
     df = load_fundamentals(
-        ["aaa"], "2020-01-01", "2020-12-31", lag_days=0, cache_dir=str(tmp_path), provider=mine,
+        ["aaa"],
+        "2020-01-01",
+        "2020-12-31",
+        lag_days=0,
+        cache_dir=str(tmp_path),
+        provider=mine,
         splits=flat_split_history(["aaa"]),
     )
 
@@ -105,6 +113,8 @@ def test_a_legacy_series_nobody_can_refresh_is_still_returned_for_returns(tmp_pa
         root / "prices" / "GONE.parquet", index=False
     )
 
-    df = load_prices(["gone"], "2020-01-02", "2020-01-03", cache_dir=str(tmp_path), providers=[FakePriceProvider("yfinance")])
+    df = load_prices(
+        ["gone"], "2020-01-02", "2020-01-03", cache_dir=str(tmp_path), providers=[FakePriceProvider("yfinance")]
+    )
 
     assert df["adj_close"].tolist() == [5.0] and df["close"].isna().all()

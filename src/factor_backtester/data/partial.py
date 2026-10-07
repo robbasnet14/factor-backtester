@@ -13,6 +13,7 @@ the failures.
 warning, and records them in the returned frame's
 `attrs["failed_tickers"]` (ticker -> error) so a caller can report them.
 """
+
 import warnings
 
 import pandas as pd

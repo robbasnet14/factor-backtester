@@ -1,4 +1,5 @@
 """Cross-sectional standardization and factor combination."""
+
 import numpy as np
 import pandas as pd
 

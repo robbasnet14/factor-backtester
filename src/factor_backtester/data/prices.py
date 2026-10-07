@@ -4,6 +4,7 @@ Finance (free, no key), then Tiingo (better coverage of long-delisted names)
 when `TIINGO_KEY` is set. Pass `providers=` to use data sources the engine
 doesn't ship with; see `factor_backtester.data.providers.base` for the contract.
 """
+
 import logging
 import os
 import warnings

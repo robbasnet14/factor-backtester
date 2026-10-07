@@ -2,6 +2,7 @@
 portfolios, backtest in-sample and walk-forward, report. `factor-backtest
 run` calls `run`; it can also be called directly with a config dict from
 `factor_backtester.utils.config.load_config`."""
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,9 +34,9 @@ PERIODS_PER_YEAR = 12  # monthly rebalance
 
 @dataclass(frozen=True)
 class BacktestResult:
-    net_returns: pd.Series        # in-sample, net of costs (reference only)
-    oos_returns: pd.Series        # walk-forward out-of-sample, net of costs: the headline
-    weights: pd.DataFrame         # portfolio weights per rebalance date
+    net_returns: pd.Series  # in-sample, net of costs (reference only)
+    oos_returns: pd.Series  # walk-forward out-of-sample, net of costs: the headline
+    weights: pd.DataFrame  # portfolio weights per rebalance date
     failed_tickers: dict[str, str]  # empty unless allow_partial let a failed load through
 
 
@@ -166,7 +167,9 @@ def run(cfg: dict, *, allow_partial: bool = False) -> BacktestResult:
     print(f"Backtest complete: {len(net_returns)} periods -> {out_path}")
 
     n_trials = cfg.get("validation", {}).get("n_trials", 1)
-    print_summary("Full-period summary (IN-SAMPLE — reference only, not the headline number)", net_returns, weights, n_trials)
+    print_summary(
+        "Full-period summary (IN-SAMPLE — reference only, not the headline number)", net_returns, weights, n_trials
+    )
 
     report = coverage_report(composite, factor_frames, universe)
     report.to_csv(output_dir / "coverage_report.csv")

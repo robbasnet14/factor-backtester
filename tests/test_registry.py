@@ -1,4 +1,5 @@
 """The factor plugin registry: discovery, lookup, validation, and config wiring."""
+
 import sys
 import uuid
 from pathlib import Path
@@ -27,8 +28,18 @@ def _prices():
 
 def _fundamentals():
     return pd.DataFrame(
-        [{"date": MONTHS[3], "ticker": t, "report_date": MONTHS[1], "earnings": 1.0 + i,
-          "book_value": 10.0, "roe": 0.1 * (i + 1), "shares_outstanding": 1e6} for i, t in enumerate(TICKERS)]
+        [
+            {
+                "date": MONTHS[3],
+                "ticker": t,
+                "report_date": MONTHS[1],
+                "earnings": 1.0 + i,
+                "book_value": 10.0,
+                "roe": 0.1 * (i + 1),
+                "shares_outstanding": 1e6,
+            }
+            for i, t in enumerate(TICKERS)
+        ]
     )
 
 

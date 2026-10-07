@@ -1,4 +1,5 @@
 """12-1 momentum: higher trailing return (skipping the latest month) scores higher."""
+
 import pandas as pd
 
 from factor_backtester.features.factors import momentum

@@ -1,5 +1,6 @@
 """The `factor-backtest` command and config loading: paths in a config are
 relative to the config file, wherever the command runs from."""
+
 from pathlib import Path
 
 import pytest

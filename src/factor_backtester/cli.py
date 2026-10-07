@@ -8,6 +8,7 @@ the config are relative to the config file. `factors` lists the registered
 factors, the inputs each one takes, and its parameters with their defaults,
 which are the keys its `factors:` section in a config can set.
 """
+
 import argparse
 import inspect
 import sys

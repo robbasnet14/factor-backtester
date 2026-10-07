@@ -11,6 +11,7 @@ so they can only be combined after the loader restates them onto one (see
 per-share) and `roe` is TTM `NetIncomeLoss` / that equity snapshot; both are
 company totals, so splits don't affect them.
 """
+
 from typing import cast
 
 import pandas as pd
@@ -56,6 +57,7 @@ def shares_by_filing(dei: dict, us_gaap: dict) -> pd.DataFrame:
     instead of ~$200B. A consumer computing market cap must exclude
     multi-class companies rather than trust the count.
     """
+
     def latest_per_filing(facts: pd.DataFrame) -> pd.Series:
         return facts.sort_values("end").drop_duplicates("filed", keep="last").set_index("filed")["val"]
 
@@ -129,7 +131,9 @@ def fill_missing_q4(quarterly: pd.DataFrame, annual: pd.DataFrame) -> pd.DataFra
         prior = quarterly[quarterly["end"] < arow.end].sort_values("end").tail(3)
         if len(prior) != 3 or (arow.end - prior["end"].min()).days > 400:
             continue  # not enough of, or too stale a, Q1-Q3 run to derive Q4 from
-        derived_rows.append({"end": arow.end, "filed": arow.filed, "val": cast(float, arow.val) - prior["val"].sum(min_count=3)})
+        derived_rows.append(
+            {"end": arow.end, "filed": arow.filed, "val": cast(float, arow.val) - prior["val"].sum(min_count=3)}
+        )
 
     if not derived_rows:
         return quarterly
@@ -181,7 +185,11 @@ def extract_instant_facts(concept_facts: dict) -> pd.DataFrame:
 def _dedupe_by_end(rows: list[dict]) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame(
-            {"end": pd.Series(dtype="datetime64[ns]"), "filed": pd.Series(dtype="datetime64[ns]"), "val": pd.Series(dtype="float64")}
+            {
+                "end": pd.Series(dtype="datetime64[ns]"),
+                "filed": pd.Series(dtype="datetime64[ns]"),
+                "val": pd.Series(dtype="float64"),
+            }
         )
     # A period can be re-disclosed in a later filing (e.g. as a prior-year
     # comparative); keep the earliest `filed` date so `report_date` reflects

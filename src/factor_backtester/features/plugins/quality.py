@@ -1,4 +1,5 @@
 """Quality: higher return on equity scores higher."""
+
 import pandas as pd
 
 from factor_backtester.features.factors import quality

@@ -109,8 +109,14 @@ prices = load_prices(["AAPL"], "2017-01-01", "2021-12-31", "data_cache")
 # Real SEC fundamentals — TTM EPS, book value, ROE, all point-in-time. EPS is restated
 # across splits using the price history's split_ratio: AAPL's TTM EPS stays smooth
 # through its 2020-08-31 4-for-1 instead of "falling" 61%.
-load_fundamentals(["AAPL"], "2019-01-01", "2021-12-31", lag_days=90, cache_dir="data_cache",
-                  splits=prices[["date", "ticker", "split_ratio"]])
+load_fundamentals(
+    ["AAPL"],
+    "2019-01-01",
+    "2021-12-31",
+    lag_days=90,
+    cache_dir="data_cache",
+    splits=prices[["date", "ticker", "split_ratio"]],
+)
 
 # Confirm Lehman Brothers shows up as a member and then disappears in Sept 2008:
 u = build_universe("SP500", "2008-06-01", "2008-10-01", cache_dir="data_cache")

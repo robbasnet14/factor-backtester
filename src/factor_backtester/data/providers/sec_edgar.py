@@ -5,6 +5,7 @@ every request and rate-limits abusive callers (see `_SEC_HEADERS`). SEC's
 `filed` date is exactly when a 10-Q/10-K's numbers became public, so the
 `report_date` this returns has no look-ahead by construction.
 """
+
 import json
 import logging
 import time
@@ -142,7 +143,9 @@ def resolve_cik(ticker: str, ticker_to_cik: dict) -> int | None:
     return None
 
 
-def debug_print_resolved_ciks(tickers: Sequence[str] = ("AAPL", "V", "MMC", "WBA"), cache_dir: str = "data_cache") -> dict:
+def debug_print_resolved_ciks(
+    tickers: Sequence[str] = ("AAPL", "V", "MMC", "WBA"), cache_dir: str = "data_cache"
+) -> dict:
     """Manual sanity check: resolve and print CIKs for the given tickers.
 
     Run directly (`python -m factor_backtester.data.providers.sec_edgar`) to eyeball that

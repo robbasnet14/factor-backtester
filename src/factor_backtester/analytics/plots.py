@@ -1,4 +1,5 @@
 """Charts."""
+
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -9,11 +10,13 @@ _INK_PRIMARY = "#0b0b0b"
 _INK_SECONDARY = "#52514e"
 _INK_MUTED = "#898781"
 _GRIDLINE = "#e1e0d9"
-_STRATEGY_COLOR = "#2a78d6"   # categorical slot 1 (blue)
+_STRATEGY_COLOR = "#2a78d6"  # categorical slot 1 (blue)
 _BENCHMARK_COLOR = "#1baf7a"  # categorical slot 2 (aqua)
 
 
-def plot_equity_curve(returns: pd.Series, benchmark: pd.Series | None = None, path: str = "outputs/equity_curve.png") -> None:
+def plot_equity_curve(
+    returns: pd.Series, benchmark: pd.Series | None = None, path: str = "outputs/equity_curve.png"
+) -> None:
     """Plot cumulative growth of $1 for `returns`, optionally overlaid with
     `benchmark` (e.g. SPY) on the same periods, and save to `path`.
 
@@ -27,7 +30,9 @@ def plot_equity_curve(returns: pd.Series, benchmark: pd.Series | None = None, pa
     fig, ax = plt.subplots(figsize=(10, 6), facecolor=_SURFACE)
     ax.set_facecolor(_SURFACE)
 
-    ax.plot(equity.index, equity.to_numpy(), color=_STRATEGY_COLOR, linewidth=2, solid_capstyle="round", label="Strategy")
+    ax.plot(
+        equity.index, equity.to_numpy(), color=_STRATEGY_COLOR, linewidth=2, solid_capstyle="round", label="Strategy"
+    )
 
     if benchmark is not None:
         b = benchmark.reindex(r.index).dropna()

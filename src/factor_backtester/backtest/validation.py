@@ -18,6 +18,7 @@ collapse into a single gap between the end of each expanding in-sample
 window and the start of the next out-of-sample test block: no rebalance is
 scored or traded during that gap at all.
 """
+
 import pandas as pd
 
 from factor_backtester.backtest.engine import run_backtest
@@ -99,7 +100,9 @@ def walk_forward_backtest(
         if test_dates.empty:
             continue
         fold_prices = prices.reindex(test_dates) if prices is not None else None
-        oos_segments.append(run_backtest(weights.loc[test_dates], forward_returns.reindex(test_dates), cost_bps, prices=fold_prices))
+        oos_segments.append(
+            run_backtest(weights.loc[test_dates], forward_returns.reindex(test_dates), cost_bps, prices=fold_prices)
+        )
 
     if not oos_segments:
         raise ValueError("walk_forward_backtest: folds were computed but none contained any rebalance dates")

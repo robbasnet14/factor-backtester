@@ -9,6 +9,7 @@ errors breaks these tests instead of quietly reintroducing the bug.
 yfinance did exactly that: `yf.download` turns every per-ticker error into
 an empty frame.
 """
+
 import json
 import time
 

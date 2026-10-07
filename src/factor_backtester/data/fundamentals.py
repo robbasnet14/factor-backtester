@@ -3,6 +3,7 @@
 availability lag. Pass `provider=` to use a different source; see
 `factor_backtester.data.providers.base` for the contract.
 """
+
 import warnings
 from pathlib import Path
 
@@ -121,7 +122,16 @@ def load_fundamentals(
 
     if not frames:
         out = pd.DataFrame(
-            columns=["date", "ticker", "report_date", "earnings", "book_value", "roe", "shares_outstanding", "public_float"]
+            columns=[
+                "date",
+                "ticker",
+                "report_date",
+                "earnings",
+                "book_value",
+                "roe",
+                "shares_outstanding",
+                "public_float",
+            ]
         )
     else:
         out = pd.concat(frames, ignore_index=True).sort_values(["ticker", "report_date"]).reset_index(drop=True)
