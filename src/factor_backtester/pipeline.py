@@ -26,7 +26,7 @@ from factor_backtester.backtest.portfolio import decile_portfolios, tradable_on_
 from factor_backtester.backtest.validation import walk_forward_backtest
 from factor_backtester.data.loader import load_fundamentals, load_prices
 from factor_backtester.data.universe import build_universe
-from factor_backtester.features.registry import compute_factors
+from factor_backtester.features.registry import compute_factors, load_plugin_dirs, registered_factors
 from factor_backtester.features.transforms import combine_factors
 
 PERIODS_PER_YEAR = 12  # monthly rebalance
@@ -89,8 +89,19 @@ def print_partial_data_banner(failed: dict[str, str]) -> None:
 
 def run(cfg: dict, *, allow_partial: bool = False) -> BacktestResult:
     """Run the backtest `cfg` describes, printing a report and writing
-    outputs to `cfg["output_dir"]`. Raises `PartialDataError` if a data
-    source fails for some tickers, unless `allow_partial`."""
+    outputs to `cfg["output_dir"]`. Factors in `cfg["plugin_dirs"]` are
+    loaded first. Raises `PartialDataError` if a data source fails for some
+    tickers, unless `allow_partial`."""
+    # Before any data is loaded, so a missing directory, a broken plugin
+    # file or a misspelled factor fails in seconds.
+    plugin_dirs = cfg.get("plugin_dirs", [])
+    added = load_plugin_dirs(plugin_dirs)
+    if plugin_dirs:
+        print(f"Plugin factors from {', '.join(plugin_dirs)}: {', '.join(added) or 'none new'}")
+    unknown = [name for name in cfg["factors"] if name not in registered_factors()]
+    if unknown:
+        raise KeyError(f"config names factor(s) {unknown} that aren't registered; registered: {registered_factors()}")
+
     output_dir = Path(cfg["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
 

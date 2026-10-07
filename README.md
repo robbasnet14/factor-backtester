@@ -36,8 +36,9 @@ here.
   later stock splits, and the price is split-adjusted but not dividend-adjusted.
 - Two more factors ship as plugins, off by default: low volatility (trailing daily-return
   volatility, window ending the day before each rebalance) and size (market cap from SEC
-  shares outstanding, cross-checked against reported public float). A factor is one file
-  in `src/factor_backtester/features/plugins/`; the registry finds it, and `config.yaml` switches it on.
+  shares outstanding, cross-checked against reported public float). A factor is one file,
+  in a directory your config lists under `plugin_dirs:` (or, for the built-in ones,
+  `src/factor_backtester/features/plugins/`); the registry finds it, and `config.yaml` switches it on.
 - Goes long the top decile, short the bottom decile, rebalances monthly, and charges
   8 bps per trade based on turnover (or, with `cost_model: per_name`, a volatility-scaled
   cost per name). Only names that actually traded on the rebalance
@@ -139,7 +140,7 @@ src/factor_backtester/
   analytics/  performance metrics, coverage report, equity-curve chart
   pipeline.py the full run a config describes, wiring the above together
   cli.py      the `factor-backtest` command
-tests/        145 tests, network-mocked
+tests/        153 tests, network-mocked
 config.yaml   every knob (universe, dates, costs, factors, validation, output location)
 ```
 
@@ -245,7 +246,7 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-145 tests, all network-mocked except one opt-in live SEC integration check. They cover the
+153 tests, all network-mocked except one opt-in live SEC integration check. They cover the
 easy-to-get-wrong stuff: momentum's skip-month, the point-in-time fundamentals lag, the
 delisted-name universe, never holding a name on a date it didn't trade, EPS restated across
 splits (checked against AAPL's and NVDA's real filings), turnover cost math, the

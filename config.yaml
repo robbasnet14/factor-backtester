@@ -11,6 +11,8 @@ data:
   fundamentals_lag_days: 90 # extra buffer past SEC's actual filing date; filing date alone already prevents look-ahead
 
 # ---- Factors ----
+# Directories of your own factor plugin files (relative to this file), e.g. ["my_factors"].
+plugin_dirs: []
 factors:
   momentum: {enabled: true, lookback_months: 12, skip_months: 1}
   value:    {enabled: true, metric: "earnings_yield"}

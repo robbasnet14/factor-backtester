@@ -1,10 +1,17 @@
 """Factor plugin registry.
 
 A factor is a function decorated with `@register_factor(name, inputs=...)` in
-a module under `factor_backtester/features/plugins/`. Every module in that package is
-imported by `discover()`, so adding a factor means adding one file there:
-nothing else in the engine refers to it by name. `config.yaml`'s `factors:`
-section decides which registered factors run.
+a plugin module, and adding one means adding one file: nothing else in the
+engine refers to it by name. Plugin modules are found in two places:
+
+- the built-in factors, in `factor_backtester/features/plugins/`, imported
+  by `discover()`;
+- your own, in any directory a config lists under `plugin_dirs:`, imported
+  by `load_plugin_dirs()`. Each `.py` file there (except names starting
+  with `_`) is imported on its own, not as part of a package, so a plugin
+  file can't import a sibling module.
+
+`config.yaml`'s `factors:` section decides which registered factors run.
 
 Contract for a factor function:
 
@@ -22,15 +29,19 @@ Contract for a factor function:
 
 Registration is a plain decorator into a dict rather than setuptools entry
 points: entry points only pay off once separately installed packages
-contribute factors, and nothing installs this one yet. If that changes, an
-entry-point group can feed the same `register_factor` without changing any
-factor.
+contribute factors, and a plugin directory covers your own. If that
+changes, an entry-point group can feed the same `register_factor` without
+changing any factor.
 """
 
+import hashlib
 import importlib
+import importlib.util
 import pkgutil
-from collections.abc import Callable, Mapping
+import sys
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 
@@ -79,6 +90,39 @@ def discover() -> None:
     for module in pkgutil.iter_modules(package.__path__):
         if not module.name.startswith("_"):
             importlib.import_module(f"{PLUGIN_PACKAGE}.{module.name}")
+
+
+def load_plugin_dirs(dirs: Iterable[str | Path]) -> list[str]:
+    """Import every plugin file in each of `dirs`, registering its factors,
+    and return the names of the factors registered by this call. Safe to
+    call repeatedly: a file already imported isn't re-run (it's keyed by its
+    resolved path). A directory that doesn't exist is an error, not an
+    empty plugin set."""
+    before = set(_REGISTRY)
+    for directory in dirs:
+        directory = Path(directory).expanduser().resolve()
+        if not directory.is_dir():
+            raise FileNotFoundError(f"plugin directory {directory} doesn't exist")
+        for path in sorted(directory.glob("*.py")):
+            if not path.name.startswith("_"):
+                _import_plugin_file(path)
+    return sorted(set(_REGISTRY) - before)
+
+
+def _import_plugin_file(path: Path) -> None:
+    digest = hashlib.sha1(str(path).encode()).hexdigest()[:12]
+    module_name = f"_factor_backtester_plugin_{path.stem}_{digest}"
+    if module_name in sys.modules:
+        return
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    assert spec is not None and spec.loader is not None, path  # a .py file always gets a loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        del sys.modules[module_name]  # so fixing the file and loading again works
+        raise
 
 
 def registered_factors() -> list[str]:

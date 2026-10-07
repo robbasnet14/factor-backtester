@@ -1,12 +1,13 @@
 """The `factor-backtest` command.
 
     factor-backtest run --config config.yaml [--allow-partial]
-    factor-backtest factors
+    factor-backtest factors [--config config.yaml]
 
 `run` runs the backtest a config describes (see `pipeline.run`); paths in
 the config are relative to the config file. `factors` lists the registered
 factors, the inputs each one takes, and its parameters with their defaults,
-which are the keys its `factors:` section in a config can set.
+which are the keys its `factors:` section in a config can set; with
+`--config`, that includes the factors in the config's `plugin_dirs`.
 """
 
 import argparse
@@ -15,7 +16,7 @@ import sys
 from importlib.metadata import version
 
 from factor_backtester.data.partial import PartialDataError
-from factor_backtester.features.registry import get_factor, registered_factors
+from factor_backtester.features.registry import get_factor, load_plugin_dirs, registered_factors
 from factor_backtester.utils.config import load_config
 
 
@@ -34,6 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.set_defaults(handler=_run)
 
     factors_parser = commands.add_parser("factors", help="list the registered factors and their inputs")
+    factors_parser.add_argument("--config", help="also list the factors in this config's plugin_dirs")
     factors_parser.set_defaults(handler=_factors)
 
     args = parser.parse_args(argv)
@@ -52,6 +54,8 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def _factors(args: argparse.Namespace) -> int:
+    if args.config:
+        load_plugin_dirs(load_config(args.config)["plugin_dirs"])
     for name in registered_factors():
         factor = get_factor(name)
         params = [
