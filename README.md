@@ -1,175 +1,79 @@
-# Factor Backtester
+# factor-backtester
 
 [![tests](https://github.com/robbasnet14/factor-backtester/actions/workflows/tests.yml/badge.svg)](https://github.com/robbasnet14/factor-backtester/actions/workflows/tests.yml)
 
-A backtesting engine for long/short equity factor strategies. Each month it ranks
-stocks by momentum, value, and quality, buys the best ones, shorts the worst, and
-simulates the whole thing on point-in-time data with trading costs — so the numbers
-are something you can actually trust.
+A Python library and command-line tool for testing **stock-ranking rules** on historical
+data without fooling yourself.
 
-I built this to understand how factor strategies really behave once you stop cheating:
-no peeking at the future, no quietly dropping companies that went bankrupt, no
-pretending trading is free. Honestly, most of the work went into *not* fooling myself,
-which turns out to be the hard part of backtesting.
+You write a rule as a plain function: given prices and company financials, score every
+stock each month, higher meaning "I'd rather own this one". The engine does the rest. It
+buys the top-scoring tenth of the market and bets against (sells short) the bottom tenth,
+re-ranks every month, charges trading costs, and reports how that would have performed.
+The hard part, and most of the code, is making that performance number trustworthy.
+That means four things:
 
-**Used in a follow-up study:** [ml-vs-linear-factors](https://github.com/robbasnet14/ml-vs-linear-factors)
-takes this engine's linear factor composite as the baseline and asks whether a
-pre-registered, walk-forward, cost-aware machine-learning model can beat it. (Short
-answer: no, not on the pre-registered terms — the apparent edge traces to a single
-12-month fold and doesn't survive a proper multiple-testing correction.) That repo
-vendors a snapshot of this engine's code as of commit `31b92b4` here (brought in by its
-own commit `eac614c`); this repo remains the maintained, independently-evolving version.
-The snapshot predates the tradability fix, the per-name cost model and the value-factor
-split/dividend fix (see Corrections below), so its baseline numbers differ from the ones
-here.
+- **No look-ahead.** A score on a given date only uses information public on that date.
+  Company financials count from when they were filed (plus a buffer, 90 days by default),
+  not from the end of the quarter they describe.
+- **No survivorship bias.** The stock universe is the S&P 500 as it actually was on each
+  date, including companies that later went bankrupt or were acquired. Testing only on
+  today's survivors flatters any strategy.
+- **Costs and tradability.** Every trade pays a cost. A stock that didn't trade on the
+  rebalance date can't be bought or sold that day.
+- **Out-of-sample headline.** The headline is measured *walk-forward*: on yearly blocks after
+  an initial five-year window, each preceded by a one-month gap, not on the whole period
+  at once. The built-in factors are fixed formulas with nothing fitted, so here this
+  mainly guards against one lucky full-period number. It's also where fitted parameters
+  (factor weights, lookbacks) would plug in without leaking into the years they're
+  scored on.
 
-## What it does
+In finance terms, the scoring rules are *factors*, the portfolio is a long/short
+decile portfolio rebalanced monthly, and the scores are cross-sectionally z-scored and
+averaged into a composite. You don't need those terms to use it.
 
-- Rebuilds the S&P 500 as it actually existed on each date, delisted names included,
-  so there's no survivorship bias. (Sanity check I keep coming back to: Lehman shows up
-  as a member until it blows up in 2008 and then disappears, which is exactly right.)
-- Pulls prices from Yahoo Finance with a Tiingo fallback for delisted names, and
-  fundamentals straight from SEC EDGAR (TTM diluted EPS, book value, ROE).
-- Computes three factors per stock, per month: 12-1 momentum, earnings yield (value),
-  and ROE (quality); standardizes each date's cross-section and blends them. Earnings
-  yield compares EPS and price per the same share: every quarter's EPS is restated across
-  later stock splits, and the price is split-adjusted but not dividend-adjusted.
-- Two more factors ship as plugins, off by default: low volatility (trailing daily-return
-  volatility, window ending the day before each rebalance) and size (market cap from SEC
-  shares outstanding, cross-checked against reported public float). A factor is one file,
-  in a directory your config lists under `plugin_dirs:` (or, for the built-in ones,
-  `src/factor_backtester/features/plugins/`); the registry finds it, and `config.yaml` switches it on.
-- Goes long the top decile, short the bottom decile, rebalances monthly, and charges
-  8 bps per trade based on turnover (or, with `cost_model: per_name`, a volatility-scaled
-  cost per name). Only names that actually traded on the rebalance
-  date are ranked, so a delisted company can't be bought or held after it's gone.
-- Reports the honest version of performance: out-of-sample Sharpe from a walk-forward
-  test, a deflated Sharpe that accounts for how many configurations I tried, plus
-  drawdown, turnover, and factor coverage.
+## Install
 
-## Results
-
-S&P 500, 2010–2024, monthly rebalance, equal-weight top-decile-long / bottom-decile-short,
-8 bps per-trade cost. The **out-of-sample** column (walk-forward, 10 folds) is the number
-that matters; the in-sample column is shown only for reference.
-
-| Metric | Out-of-sample (headline) | In-sample (reference) |
-|---|---|---|
-| Annualized return | −5.0% | −4.4% |
-| Annualized volatility | 19.3% | 16.8% |
-| Sharpe ratio | −0.16 | −0.18 |
-| Deflated Sharpe (probability) | 0.31 | 0.24 |
-| Max drawdown | −56.9% | −53.1% |
-| Avg monthly turnover | 42.3% | 42.1% |
-| Hit rate | 47.7% | 46.4% |
-
-Mean factor coverage across rebalance dates: composite score 91%, value-and-quality 71%.
-
-**Cost sensitivity** — the same portfolios under three cost assumptions (printed by every
-run). The headline uses the flat 8 bps because it's the model with the fewest assumptions:
-you can sanity-check 8 bps without trusting my volatility proxy.
-
-| Cost model | OOS return | OOS Sharpe | OOS max drawdown | Deflated Sharpe | In-sample Sharpe |
-|---|---|---|---|---|---|
-| Gross (no costs) | −4.6% | −0.14 | −56.2% | 0.334 | −0.15 |
-| Flat 8 bps (headline) | −5.0% | −0.16 | −56.9% | 0.308 | −0.18 |
-| Per-name, volatility-scaled | −5.1% | −0.17 | −57.1% | 0.302 | −0.18 |
-
-### Corrections
-
-These numbers are after two correctness fixes; earlier versions of this README reported
-better ones.
-
-1. **Untradable holdings.** Earlier versions could hold a delisted name in a month it never
-   traded (50 position-months, booked at a flat 0%). Excluding untradable names moved the
-   out-of-sample return from −1.4% to −1.6%; the Sharpe stayed at 0.02.
-2. **A look-ahead leak in the value factor.** Earnings yield divided EPS *as filed* by a
-   price adjusted for every split and dividend up to the download date. After a 4-for-1,
-   earlier EPS sits on the old share basis while the price is divided by four, so every
-   stock that went on to split looked cheaper than it was, by exactly its future split
-   factor: NVDA by 40× in 2015. Stocks that split are mostly stocks that rose, so the value
-   factor ranked future winners as cheap. The dividend adjustment did the same, more
-   mildly, to future dividend payers. Summing pre- and post-split quarters into a TTM also
-   produced artifacts such as AAPL's EPS "falling" 61% after its 2020 split, and a derived
-   NVDA quarter showing a −$1.09 loss when it earned $1.18. Now each quarter's EPS is
-   restated across later splits (a change of units, so no look-ahead) and compared with a
-   split-adjusted, not dividend-adjusted, price. Walk-forward out-of-sample, attributed:
-
-   | | Return | Sharpe |
-   |---|---|---|
-   | Before the fix | −1.6% | 0.02 |
-   | Same code on re-downloaded data (revisions in the source data only) | −1.8% | 0.01 |
-   | Dividend part of the fix only | −3.3% | −0.07 |
-   | Split part of the fix only | −4.4% | −0.13 |
-   | Both (current) | −5.0% | −0.16 |
-
-   The leak was worth about 0.17 of Sharpe, almost all of the difference.
-
-![Out-of-sample equity curve vs SPY](outputs/equity_curve_oos.png)
-
-### What this means
-
-The honest answer: **a naive momentum/value/quality long–short has no edge in large-cap
-US equities — not after costs, and not before them either.** Out of sample the Sharpe is
-slightly negative (−0.16) and the return is −5% a year, with a deep drawdown; in-sample
-it's no better (−0.18). The deflated Sharpe — the probability that the true Sharpe is
-above zero, given how many variants were tried — is 0.31: no evidence of an edge, and
-nothing significant in the negative direction either.
-
-Costs aren't what kills it. With trading costs set to zero the out-of-sample Sharpe is
-−0.14 and the return is still −4.6% a year; costs take roughly another 0.4 percentage
-points a year on top of that. There was no gross edge for costs to eat. That's
-a stronger finding than "it works but trading is too expensive": the composite signal
-itself doesn't separate future winners from losers in this universe and period. This
-backtest can't tell me *why* — factor decay, crowding, or a too-naive equal-weight blend
-are all candidates — only that the answer isn't costs.
-
-That's a legitimate finding, not a broken project. The whole point of building this
-carefully — point-in-time universe, no look-ahead, real costs, walk-forward validation,
-deflated Sharpe — was to get an answer I could trust, and a version that looked great
-would more likely mean a bug than a discovery.
-
-## Layout
-
-```
-src/factor_backtester/
-  data/       price + fundamentals loading (Yahoo/Tiingo + SEC EDGAR), point-in-time universe
-  features/   factor formulas, standardization, and the factor registry (one plugin file per
-              factor in features/plugins/, found automatically)
-  backtest/   portfolio construction, cost model, engine, walk-forward
-  analytics/  performance metrics, coverage report, equity-curve chart
-  pipeline.py the full run a config describes, wiring the above together
-  cli.py      the `factor-backtest` command
-tests/        153 tests, network-mocked
-config.yaml   every knob (universe, dates, costs, factors, validation, output location)
-```
-
-## Reproducing this
-
-Prices come from Yahoo Finance (no key). Fundamentals come from SEC EDGAR (no key, but it
-wants a descriptive User-Agent, which is set in `src/factor_backtester/data/providers/sec_edgar.py`). A Tiingo key is optional and
-only used as a price fallback for a few delisted names — set `TIINGO_KEY` if you have one.
+Python 3.11 or later.
 
 ```bash
-git clone https://github.com/robbasnet14/factor-backtester && cd factor-backtester
+git clone https://github.com/robbasnet14/factor-backtester
+cd factor-backtester
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e .
+```
+
+That installs the `factor_backtester` package (the distribution is named
+`factor-backtester`) and a `factor-backtest` command.
+
+## Run the example study
+
+```bash
 factor-backtest run --config config.yaml
 ```
 
-`factor-backtest factors` lists the registered factors, their inputs and their parameters.
+`config.yaml` describes one backtest: the stock universe and dates (S&P 500, 2010–2024),
+which factors run, portfolio construction, trading costs and the walk-forward setup.
+Prices come from Yahoo Finance and company financials from SEC EDGAR, both free with no
+API key. A [Tiingo](https://www.tiingo.com) key in `TIINGO_KEY` is optional and only used
+as a price fallback for a few delisted companies.
 
-The first run pulls and caches data (slow), and records permanently-unavailable tickers in
-`data_cache/*.json` so later runs skip them. Every run after the first reads the cache and
-is quick. Outputs land in `outputs/`. Both directories are set in `config.yaml` and are
-relative to that file, not to where you run the command, so the run reads and writes the
-same places from any directory.
+The first run downloads and caches everything (slow); later runs read the cache and take
+well under a minute. Results go to `outputs/`: the monthly return series (`net_returns.csv`
+in-sample, `oos_net_returns.csv` walk-forward), a coverage report, and equity-curve
+charts. The paths in a config are relative to the config file, so the command reads and
+writes the same places from any directory.
 
-If a data source fails for some tickers (a network error, a rate limit) rather than having
-no data for them, the run stops before backtesting and lists them. Everything that did load
-is cached by then, so running again only asks for those. `--allow-partial` continues without
-them instead and prints the missing tickers before and after the results. Dropping one
-ticker is enough to move the headline: without MSFT the OOS Sharpe is −0.15 instead of −0.16.
+```bash
+factor-backtest factors                     # the registered factors, their inputs and parameters
+factor-backtest run --config config.yaml --allow-partial
+```
+
+If a data source *fails* for some tickers (a network error, a rate limit), as opposed to
+having no data for them, the run stops before backtesting and names them. Everything
+that did load is cached, so running again only fetches those. `--allow-partial`
+continues without them and prints the missing tickers before and after the results.
+That's opt-in because it matters: dropping just MSFT moves the example study's
+out-of-sample Sharpe from −0.16 to −0.15.
 
 ### With Docker
 
@@ -181,9 +85,208 @@ docker run --rm \
   factor-backtester
 ```
 
-The `data_cache` mount keeps downloaded data on your machine, so reruns reuse it instead
-of downloading everything again; the `outputs` mount is where the CSVs and charts land.
-Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
+The `data_cache` mount keeps downloaded data on your machine between runs, and `outputs`
+is where the results land. Add `-e TIINGO_KEY` to pass a Tiingo key through.
+
+## Write your own factor
+
+A factor is one Python file in a directory of your own. Here's a one-month *reversal*
+factor, which bets that last month's biggest losers bounce back. It's an illustration,
+not a recommendation. From the repository root:
+
+```bash
+mkdir -p my_factors
+cat > my_factors/reversal.py <<'EOF'
+import pandas as pd
+
+from factor_backtester.features.registry import register_factor
+
+
+@register_factor("reversal", inputs=("prices",))
+def compute(prices: pd.DataFrame, lookback_months: int = 1) -> pd.DataFrame:
+    # One column per ticker, one row per month-end.
+    monthly = prices.pivot(index="date", columns="ticker", values="adj_close").resample("ME").last()
+    past_return = monthly.pct_change(lookback_months, fill_method=None)
+    return -past_return  # higher score = more attractive, so the biggest losers score highest
+EOF
+```
+
+Then point `config.yaml` at the directory and switch the factor on:
+
+```yaml
+plugin_dirs: [my_factors]          # relative to config.yaml
+
+factors:
+  reversal: {enabled: true, lookback_months: 1}
+  momentum: {enabled: true, lookback_months: 12, skip_months: 1}
+  # ...the rest as before
+```
+
+```bash
+factor-backtest factors --config config.yaml   # reversal is now listed
+factor-backtest run --config config.yaml
+```
+
+Nothing else in the engine needs to know the factor exists. The contract:
+
+- **Inputs, by name.** Declare which ones you need in `inputs=`:
+  - `prices`: one row per ticker per trading day, with columns `date`, `ticker`,
+    `adj_close` (adjusted for splits and dividends, so use it for returns), `close`
+    (adjusted for splits only, so use it next to per-share accounting figures) and
+    `split_ratio`.
+  - `fundamentals`: one row per ticker per filing, with columns `date` (when the figures
+    may be used), `ticker`, `report_date`, `earnings` (trailing-twelve-month earnings per share),
+    `book_value`, `roe`, `shares_outstanding` and `public_float`.
+- **Parameters.** Every other keyword argument is a parameter, set from the factor's line
+  in the config. `enabled` is the engine's switch, not a parameter.
+- **Output.** A DataFrame indexed by month-end date, one column per ticker. NaN means
+  "no score this month", and that stock is left out.
+- **Sign convention: higher means more attractive.** The engine standardizes each
+  factor month by month, averages them, buys the top tenth and shorts the bottom tenth.
+  If your raw quantity is the other way round (lower volatility is better, say), negate
+  it inside the factor.
+
+A name that clashes with an existing factor fails when the file is loaded, so a plugin
+can't silently replace a built-in one. The built-in factors are written the same way, in
+[`src/factor_backtester/features/plugins/`](src/factor_backtester/features/plugins/);
+`low_vol` and `size` are good second examples.
+
+### From Python
+
+For a notebook, or to embed the engine, register the factor in code and call the pipeline
+directly. `run` prints the same report and returns the results:
+
+```python
+import pandas as pd
+
+from factor_backtester.features.registry import register_factor
+from factor_backtester.pipeline import run
+from factor_backtester.utils.config import load_config
+
+
+@register_factor("reversal", inputs=("prices",))
+def reversal(prices: pd.DataFrame, lookback_months: int = 1) -> pd.DataFrame:
+    monthly = prices.pivot(index="date", columns="ticker", values="adj_close").resample("ME").last()
+    return -monthly.pct_change(lookback_months, fill_method=None)
+
+
+cfg = load_config("config.yaml")
+cfg["factors"]["reversal"] = {"enabled": True, "lookback_months": 1}
+result = run(cfg)
+print(result.oos_returns.tail())  # walk-forward monthly returns, net of costs
+```
+
+`result` also carries `net_returns` (in-sample), `weights` (the portfolio on each
+rebalance date) and `failed_tickers`.
+
+## Architecture
+
+```
+src/factor_backtester/
+  data/        loading, caching and the point-in-time universe
+    providers/   Yahoo, Tiingo and SEC EDGAR, behind two Protocols
+  features/    factor formulas, standardization, the registry
+    plugins/     the built-in factors, one file each
+  backtest/    portfolio construction, cost models, engine, walk-forward
+  analytics/   metrics (Sharpe, deflated Sharpe, drawdown, turnover), coverage, charts
+  pipeline.py  the run a config describes, end to end
+  cli.py       the factor-backtest command
+```
+
+**Data sources are Protocols.** A `PriceProvider` is any object with a `name` and
+`fetch(ticker, start, end)`, and a `FundamentalsProvider` has `fetch(ticker)`
+([`providers/base.py`](src/factor_backtester/data/providers/base.py) documents the
+columns). `load_prices(..., providers=[...])` takes an ordered chain and uses the first
+provider with data for each ticker; `load_fundamentals(..., provider=...)` takes one. So
+a paid vendor, a CSV dump or an internal feed plugs in without touching the engine. The
+contract has one rule that everything else depends on:
+
+- **No data is a normal answer.** Return an empty DataFrame, and the ticker is skipped.
+  With the built-in sources it's also remembered as unavailable, so it isn't asked again.
+- **Failing to answer must raise.** Raise on a network error or exhausted retries, and
+  the run stops and reports the ticker (see `--allow-partial` above).
+
+Mixing the two up makes results depend on the network: a throttled request that comes
+back empty looks like a company with no data. yfinance does exactly that by default, so
+the Yahoo provider asks it to raise instead. A test per provider fails the network
+connection underneath it and checks that `fetch` raises.
+
+**Factors are found, not wired in.** `@register_factor` adds a function to a registry.
+The built-in plugins are discovered by scanning their package, and yours by scanning the
+config's `plugin_dirs`. The registry checks that every factor a config names exists,
+before any data is loaded, so a typo fails in seconds instead of being skipped. It's a
+plain decorator rather than setuptools entry points: entry points pay off when separately
+installed packages contribute factors, and a plugin directory covers your own.
+
+**Caching wraps providers instead of living in them.** Providers only fetch. The cache
+layer ([`data/cache.py`](src/factor_backtester/data/cache.py)) sits between them and the
+loader and keeps one Parquet file per ticker. So every provider, including yours, gets
+the same caching without implementing it, and the hard parts live in one place:
+
+- remembering which date range was already requested, so a stock listed mid-period isn't
+  re-downloaded on every run;
+- replacing a cached series when the source reports a new stock split, because every
+  cached price is then on the old per-share basis;
+- refusing a download that covers less than the cache holds, which is usually a delisted
+  ticker the source has reassigned to a different company.
+
+A custom provider chain gets its own cache namespace, so one source's data is never
+served as another's.
+
+## An example study run with this engine
+
+`config.yaml` as shipped: S&P 500, 2010–2024, momentum, value and quality blended
+equally, monthly rebalance, 8 bps cost per trade. Walk-forward, 10 yearly folds:
+
+| Out-of-sample, after costs | |
+|---|---|
+| Annualized return | −5.0% |
+| Sharpe ratio (return per unit of risk) | −0.16 |
+| Deflated Sharpe (probability the true Sharpe is above zero) | 0.31 |
+| Max drawdown (worst peak-to-trough fall) | −56.9% |
+| Avg monthly turnover | 42.3% |
+
+**There's no edge here, and costs aren't the reason.** With costs set to zero, the
+out-of-sample Sharpe is still −0.14 (return −4.6% a year). The blended signal itself
+doesn't separate future winners from losers in large US stocks over this period.
+In-sample it's no better (−0.18). The deflated Sharpe of 0.31 is no evidence of an edge
+in either direction. It's computed with `n_trials: 1`, as if this were the only
+configuration ever tried; counting the variants tried along the way would only lower it. This backtest can't say *why*: factor decay, crowding and a naive
+equal-weight blend are all candidates. That's a legitimate result. The point of building
+the engine carefully was to get an answer worth trusting, and a version that looked
+great would more likely have meant a bug.
+
+Two corrections got the study here, and earlier versions of this README reported better
+numbers before them:
+
+1. **Untradable holdings.** The engine could hold a delisted stock in months it never
+   traded. Fixing that moved the out-of-sample return from −1.4% to −1.6%.
+2. **A look-ahead leak in the value factor**, worth about 0.17 of Sharpe. Earnings per
+   share as filed were divided by prices adjusted for *later* stock splits, so every stock
+   that would go on to split, which is mostly stocks that went on to rise, looked cheap in
+   advance (NVDA by 40× in 2015). Earnings are now restated across later splits and
+   compared with split-adjusted prices.
+
+   | Walk-forward out-of-sample | Return | Sharpe |
+   |---|---|---|
+   | Before the fix | −1.6% | 0.02 |
+   | Same code on re-downloaded data (revisions in the source data only) | −1.8% | 0.01 |
+   | Dividend part of the fix only | −3.3% | −0.07 |
+   | Split part of the fix only | −4.4% | −0.13 |
+   | Both (current) | −5.0% | −0.16 |
+
+![Out-of-sample equity curve vs SPY](outputs/equity_curve_oos.png)
+
+Every run prints the same portfolios under three cost models (none, flat 8 bps, and a
+volatility-scaled per-stock cost), so the effect of the cost assumption is shown rather
+than asserted.
+
+**A follow-up study** uses this engine's linear blend as a baseline:
+[ml-vs-linear-factors](https://github.com/robbasnet14/ml-vs-linear-factors) asks whether
+a pre-registered, walk-forward, cost-aware machine-learning model can beat it. Short
+answer: no. That repo vendors a snapshot of this engine as of commit `31b92b4`, before
+the tradability, cost-model and value-factor fixes, so its baseline numbers differ from
+the ones here. This repo is the maintained version.
 
 ## Some honest caveats
 
@@ -250,10 +353,10 @@ python -m pytest
 easy-to-get-wrong stuff: momentum's skip-month, the point-in-time fundamentals lag, the
 delisted-name universe, never holding a name on a date it didn't trade, EPS restated across
 splits (checked against AAPL's and NVDA's real filings), turnover cost math, the
-yfinance→Tiingo fallback, a failed download stopping the run instead of quietly dropping
-the name, and — the one I
-care about most — a test proving the engine trades on *forward* returns, never
-contemporaneous ones.
+yfinance→Tiingo fallback, every provider raising when its network connection fails, a
+failed download stopping the run instead of quietly dropping the name, plugin directories,
+and the one I care about most: a test proving the engine trades on *forward* returns,
+never contemporaneous ones. CI also runs ruff and mypy.
 
 CI runs the suite on both pandas 2.2 and 3.x, since `pyproject.toml` allows either and
 they differ in ways that matter here: on 2.x, `pct_change` forward-fills a missing price

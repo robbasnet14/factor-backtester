@@ -45,8 +45,8 @@ validation:
   # Sharpe just reports the plain (overstated) one back to you.
   n_trials: 1
   # Walk-forward, out-of-sample schedule. The headline metrics printed by
-  # run_backtest.py are computed on the STITCHED out-of-sample series this
-  # produces, not on the full-period run — see src/backtest/validation.py.
+  # `factor-backtest run` are computed on the STITCHED out-of-sample series this
+  # produces, not on the full-period run — see src/factor_backtester/backtest/validation.py.
   walk_forward:
     initial_train_months: 60   # first in-sample window before any OOS testing starts
     test_months: 12            # length of each out-of-sample block
