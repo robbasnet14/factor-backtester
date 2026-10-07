@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pandas as pd
 
-# Running `python scripts/run_backtest.py` puts scripts/ on sys.path, not the
-# project root, so `src` wouldn't be importable without this.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Running `python scripts/run_backtest.py` puts scripts/ on sys.path, not
+# src/, so `factor_backtester` wouldn't be importable without this.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from src.analytics.metrics import (
+from factor_backtester.analytics.metrics import (
     annualized_return,
     annualized_volatility,
     average_turnover,
@@ -20,17 +20,17 @@ from src.analytics.metrics import (
     print_coverage_summary,
     sharpe,
 )
-from src.analytics.plots import plot_equity_curve
-from src.backtest.costs import build_costs
-from src.backtest.engine import forward_returns_from_prices, run_backtest
-from src.backtest.portfolio import decile_portfolios, tradable_on_rebalance
-from src.backtest.validation import walk_forward_backtest
-from src.data.loader import load_fundamentals, load_prices
-from src.data.partial import PartialDataError
-from src.data.universe import build_universe
-from src.features.registry import compute_factors
-from src.features.transforms import combine_factors
-from src.utils.config import load_config
+from factor_backtester.analytics.plots import plot_equity_curve
+from factor_backtester.backtest.costs import build_costs
+from factor_backtester.backtest.engine import forward_returns_from_prices, run_backtest
+from factor_backtester.backtest.portfolio import decile_portfolios, tradable_on_rebalance
+from factor_backtester.backtest.validation import walk_forward_backtest
+from factor_backtester.data.loader import load_fundamentals, load_prices
+from factor_backtester.data.partial import PartialDataError
+from factor_backtester.data.universe import build_universe
+from factor_backtester.features.registry import compute_factors
+from factor_backtester.features.transforms import combine_factors
+from factor_backtester.utils.config import load_config
 
 PERIODS_PER_YEAR = 12  # monthly rebalance
 

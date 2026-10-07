@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtest.costs import apply_costs, build_costs, per_name_cost_bps
-from src.backtest.engine import run_backtest
+from factor_backtester.backtest.costs import apply_costs, build_costs, per_name_cost_bps
+from factor_backtester.backtest.engine import run_backtest
 
 DAYS = pd.bdate_range("2019-09-02", "2020-03-31")  # > 63 trading days before the first rebalance
 REBALANCE = pd.date_range("2020-01-31", periods=3, freq="ME")

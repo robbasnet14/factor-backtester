@@ -17,9 +17,9 @@ import pytest
 import requests
 from curl_cffi import requests as curl_requests
 
-from src.data.providers.sec_edgar import SecEdgarProvider
-from src.data.providers.tiingo import TiingoProvider
-from src.data.providers.yahoo import YahooProvider
+from factor_backtester.data.providers.sec_edgar import SecEdgarProvider
+from factor_backtester.data.providers.tiingo import TiingoProvider
+from factor_backtester.data.providers.yahoo import YahooProvider
 
 START, END = pd.Timestamp("2020-01-02"), pd.Timestamp("2020-01-06")
 

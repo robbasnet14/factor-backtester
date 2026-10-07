@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.data.providers.base import FundamentalsProvider, PriceProvider, empty_prices
+from factor_backtester.data.providers.base import FundamentalsProvider, PriceProvider, empty_prices
 
 # Per-ticker date range already requested from a provider. A name listed after
 # the start date, delisted before the end date, or a start date that falls on a

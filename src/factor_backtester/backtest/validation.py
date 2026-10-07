@@ -20,7 +20,7 @@ scored or traded during that gap at all.
 """
 import pandas as pd
 
-from src.backtest.engine import run_backtest
+from factor_backtester.backtest.engine import run_backtest
 
 
 def make_walk_forward_folds(

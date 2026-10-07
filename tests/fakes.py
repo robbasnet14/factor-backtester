@@ -1,7 +1,7 @@
 """In-memory providers implementing the data-source Protocols, for tests."""
 import pandas as pd
 
-from src.data.providers.base import empty_fundamentals, empty_prices
+from factor_backtester.data.providers.base import empty_fundamentals, empty_prices
 
 
 class FakePriceProvider:

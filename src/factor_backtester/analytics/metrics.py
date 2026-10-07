@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from src.backtest.costs import turnover as _turnover
+from factor_backtester.backtest.costs import turnover as _turnover
 
 _EULER_MASCHERONI = 0.5772156649015329
 

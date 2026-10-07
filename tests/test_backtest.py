@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtest.costs import apply_costs
-from src.backtest.engine import forward_returns_from_prices, run_backtest
-from src.backtest.portfolio import decile_portfolios, tradable_on_rebalance
+from factor_backtester.backtest.costs import apply_costs
+from factor_backtester.backtest.engine import forward_returns_from_prices, run_backtest
+from factor_backtester.backtest.portfolio import decile_portfolios, tradable_on_rebalance
 
 DATES = pd.date_range("2020-01-31", periods=3, freq="ME")
 TICKERS = [f"T{i}" for i in range(10)]  # 10 names -> clean top/bottom decile of 1 each

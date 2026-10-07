@@ -5,7 +5,7 @@ import pandas as pd
 import yfinance as yf
 from yfinance.exceptions import YFTickerMissingError
 
-from src.data.providers.base import empty_prices
+from factor_backtester.data.providers.base import empty_prices
 
 _MAX_RETRIES = 3
 _RETRY_BACKOFF_SECONDS = 1.0

@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.features.registry import get_factor
+from factor_backtester.features.registry import get_factor
 
 MONTHS = pd.date_range("2020-01-31", periods=3, freq="ME")
 

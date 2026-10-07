@@ -1,4 +1,4 @@
-"""Restating EPS across stock splits (src/data/splits.py)."""
+"""Restating EPS across stock splits (factor_backtester/data/splits.py)."""
 import json
 from pathlib import Path
 
@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.data.providers.xbrl import first_usable_eps, fundamentals_from_facts
-from src.data.splits import later_split_factor, ttm_fundamentals
+from factor_backtester.data.providers.xbrl import first_usable_eps, fundamentals_from_facts
+from factor_backtester.data.splits import later_split_factor, ttm_fundamentals
 
 FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "sec_eps_aapl_nvda_2018_2022.json").read_text())
 

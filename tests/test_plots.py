@@ -1,6 +1,6 @@
 import pandas as pd
 
-from src.analytics.plots import plot_equity_curve
+from factor_backtester.analytics.plots import plot_equity_curve
 
 
 def test_plot_equity_curve_saves_png(tmp_path):

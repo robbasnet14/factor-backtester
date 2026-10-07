@@ -96,11 +96,12 @@ is just as slow as the first, something's wrong with the caching — worth flagg
 ## 4. (Optional) Poke at one piece directly
 
 If you want to verify a specific claim without running the whole pipeline, you can call
-the library functions directly from a Python shell:
+the library functions directly from a Python shell (started from the repo root with
+`PYTHONPATH=src python`):
 
 ```python
-from src.data.loader import load_prices, load_fundamentals
-from src.data.universe import build_universe
+from factor_backtester.data.loader import load_prices, load_fundamentals
+from factor_backtester.data.universe import build_universe
 
 # Real AAPL prices, no mocking (adj_close for returns, close + split_ratio for per-share work):
 prices = load_prices(["AAPL"], "2017-01-01", "2021-12-31", "data_cache")

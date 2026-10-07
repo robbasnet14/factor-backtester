@@ -7,7 +7,7 @@ import warnings
 import pandas as pd
 import pytest
 
-from src.data.loader import load_fundamentals, load_prices
+from factor_backtester.data.loader import load_fundamentals, load_prices
 from tests.fakes import FakeFundamentalsProvider, FakePriceProvider, flat_split_history
 
 JAN = {"2020-01-02": 10.0, "2020-01-03": 10.5, "2020-01-06": 11.0}

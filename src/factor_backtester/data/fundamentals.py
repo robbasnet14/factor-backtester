@@ -1,18 +1,18 @@
 """Point-in-time fundamentals: `load_fundamentals` asks one
 `FundamentalsProvider` (by default SEC EDGAR) for each ticker and applies the
 availability lag. Pass `provider=` to use a different source; see
-`src.data.providers.base` for the contract.
+`factor_backtester.data.providers.base` for the contract.
 """
 import warnings
 from pathlib import Path
 
 import pandas as pd
 
-from src.data.cache import FundamentalsCache, Skiplist, custom_cache_root
-from src.data.partial import check_complete
-from src.data.providers.base import FundamentalsProvider
-from src.data.providers.sec_edgar import SecEdgarProvider
-from src.data.splits import ttm_fundamentals
+from factor_backtester.data.cache import FundamentalsCache, Skiplist, custom_cache_root
+from factor_backtester.data.partial import check_complete
+from factor_backtester.data.providers.base import FundamentalsProvider
+from factor_backtester.data.providers.sec_edgar import SecEdgarProvider
+from factor_backtester.data.splits import ttm_fundamentals
 
 _UNAVAILABLE_FUNDAMENTALS_FILENAME = "unavailable_fundamentals.json"
 
@@ -40,7 +40,7 @@ def load_fundamentals(
     ending on the same date as the prices the EPS will be compared with, and
     starting early enough to cover the oldest quarter in any TTM (about two
     years before `start`). `earnings` is TTM EPS with each quarter restated
-    onto the share basis at the end of that window (see `src.data.splits`),
+    onto the share basis at the end of that window (see `factor_backtester.data.splits`),
     so it's directly comparable with `close`; it's NaN where a quarter can't
     be restated, such as a ticker with no split history.
 
@@ -62,7 +62,7 @@ def load_fundamentals(
     next run regardless; they stop the load instead: once every ticker has
     been tried, `PartialDataError` names each one that failed, unless
     `allow_partial=True`, which continues without them (see
-    `src.data.partial`). Pass `force_refresh=True` to re-check every ticker —
+    `factor_backtester.data.partial`). Pass `force_refresh=True` to re-check every ticker —
     or just delete the file to reset it. An explicit `provider` is cached
     under `cache_dir/providers/<name>/` and doesn't use the skiplist.
 

@@ -7,7 +7,7 @@ filed. It's deliberately not summed into a trailing twelve months, nor used
 to derive a quarter that's only reported inside a fiscal-year total, here:
 figures filed on either side of a stock split are on different share bases,
 so they can only be combined after the loader restates them onto one (see
-`src.data.splits`). `book_value` is `StockholdersEquity` (total, not
+`factor_backtester.data.splits`). `book_value` is `StockholdersEquity` (total, not
 per-share) and `roe` is TTM `NetIncomeLoss` / that equity snapshot; both are
 company totals, so splits don't affect them.
 """

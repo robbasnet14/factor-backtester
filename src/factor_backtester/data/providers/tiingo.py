@@ -7,7 +7,7 @@ import time
 import pandas as pd
 import requests
 
-from src.data.providers.base import empty_prices
+from factor_backtester.data.providers.base import empty_prices
 
 _logger = logging.getLogger(__name__)
 

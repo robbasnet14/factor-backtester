@@ -37,7 +37,7 @@ here.
 - Two more factors ship as plugins, off by default: low volatility (trailing daily-return
   volatility, window ending the day before each rebalance) and size (market cap from SEC
   shares outstanding, cross-checked against reported public float). A factor is one file
-  in `src/features/plugins/`; the registry finds it, and `config.yaml` switches it on.
+  in `src/factor_backtester/features/plugins/`; the registry finds it, and `config.yaml` switches it on.
 - Goes long the top decile, short the bottom decile, rebalances monthly, and charges
   8 bps per trade based on turnover (or, with `cost_model: per_name`, a volatility-scaled
   cost per name). Only names that actually traded on the rebalance
@@ -131,7 +131,7 @@ would more likely mean a bug than a discovery.
 ## Layout
 
 ```
-src/
+src/factor_backtester/
   data/       price + fundamentals loading (Yahoo/Tiingo + SEC EDGAR), point-in-time universe
   features/   factor formulas, standardization, and the factor registry (one plugin file per
               factor in features/plugins/, found automatically)
@@ -145,7 +145,7 @@ config.yaml   every knob (universe, dates, costs, factors, validation)
 ## Reproducing this
 
 Prices come from Yahoo Finance (no key). Fundamentals come from SEC EDGAR (no key, but it
-wants a descriptive User-Agent, which is set in `src/data/providers/sec_edgar.py`). A Tiingo key is optional and
+wants a descriptive User-Agent, which is set in `src/factor_backtester/data/providers/sec_edgar.py`). A Tiingo key is optional and
 only used as a price fallback for a few delisted names — set `TIINGO_KEY` if you have one.
 
 ```bash

@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.features.factors import momentum, quality, value
-from src.features.transforms import combine_factors, zscore_cross_section
+from factor_backtester.features.factors import momentum, quality, value
+from factor_backtester.features.transforms import combine_factors, zscore_cross_section
 
 MONTH_ENDS = pd.date_range("2020-01-31", "2021-03-31", freq="ME")  # 15 months
 

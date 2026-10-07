@@ -8,8 +8,8 @@ import pytest
 import yfinance as yf
 from yfinance.exceptions import YFPricesMissingError, YFTzMissingError
 
-from src.data.providers import yahoo
-from src.data.providers.yahoo import YahooProvider
+from factor_backtester.data.providers import yahoo
+from factor_backtester.data.providers.yahoo import YahooProvider
 
 
 def _no_waiting(monkeypatch):

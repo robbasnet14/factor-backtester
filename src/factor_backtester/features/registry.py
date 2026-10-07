@@ -1,7 +1,7 @@
 """Factor plugin registry.
 
 A factor is a function decorated with `@register_factor(name, inputs=...)` in
-a module under `src/features/plugins/`. Every module in that package is
+a module under `factor_backtester/features/plugins/`. Every module in that package is
 imported by `discover()`, so adding a factor means adding one file there:
 nothing else in the engine refers to it by name. `config.yaml`'s `factors:`
 section decides which registered factors run.
@@ -33,10 +33,10 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from src.features.transforms import zscore_cross_section
+from factor_backtester.features.transforms import zscore_cross_section
 
 KNOWN_INPUTS = ("prices", "fundamentals")
-PLUGIN_PACKAGE = "src.features.plugins"
+PLUGIN_PACKAGE = "factor_backtester.features.plugins"
 
 
 @dataclass(frozen=True)

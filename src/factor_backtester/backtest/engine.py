@@ -4,7 +4,7 @@ import warnings
 
 import pandas as pd
 
-from src.backtest.costs import apply_costs
+from factor_backtester.backtest.costs import apply_costs
 
 _logger = logging.getLogger(__name__)
 

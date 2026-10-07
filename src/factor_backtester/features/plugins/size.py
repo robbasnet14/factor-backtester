@@ -31,8 +31,8 @@ correct market cap is dropped. That is the cost of a cross-check.
 """
 import numpy as np
 
-from src.features.factors import _fundamentals_metric_to_monthly, _pivot_prices_wide
-from src.features.registry import register_factor
+from factor_backtester.features.factors import _fundamentals_metric_to_monthly, _pivot_prices_wide
+from factor_backtester.features.registry import register_factor
 
 
 @register_factor("size", inputs=("fundamentals", "prices"))

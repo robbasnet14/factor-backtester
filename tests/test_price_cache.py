@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.data.cache import PriceCache
+from factor_backtester.data.cache import PriceCache
 from tests.fakes import FakePriceProvider
 
 T = pd.Timestamp

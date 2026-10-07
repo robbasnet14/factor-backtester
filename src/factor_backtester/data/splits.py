@@ -17,7 +17,7 @@ after its 2021 split, when it earned $1.18.
 """
 import pandas as pd
 
-from src.data.providers.xbrl import fill_missing_q4
+from factor_backtester.data.providers.xbrl import fill_missing_q4
 
 
 def later_split_factor(splits: pd.Series, dates: pd.Series) -> pd.Series:

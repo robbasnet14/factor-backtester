@@ -2,7 +2,7 @@
 each ticker and takes the first non-empty answer. By default that's Yahoo
 Finance (free, no key), then Tiingo (better coverage of long-delisted names)
 when `TIINGO_KEY` is set. Pass `providers=` to use data sources the engine
-doesn't ship with; see `src.data.providers.base` for the contract.
+doesn't ship with; see `factor_backtester.data.providers.base` for the contract.
 """
 import logging
 import os
@@ -12,11 +12,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.data.cache import PriceCache, Skiplist, custom_cache_root
-from src.data.partial import check_complete
-from src.data.providers.base import PriceProvider
-from src.data.providers.tiingo import TiingoProvider
-from src.data.providers.yahoo import YahooProvider
+from factor_backtester.data.cache import PriceCache, Skiplist, custom_cache_root
+from factor_backtester.data.partial import check_complete
+from factor_backtester.data.providers.base import PriceProvider
+from factor_backtester.data.providers.tiingo import TiingoProvider
+from factor_backtester.data.providers.yahoo import YahooProvider
 
 _logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def load_prices(
     "unavailable", and it's retried next run. It also stops the load: once
     every ticker has been tried, `PartialDataError` names each one that
     failed, unless `allow_partial=True`, which continues without them (see
-    `src.data.partial`).
+    `factor_backtester.data.partial`).
 
     The date range already requested for each cached ticker is recorded in
     `cache_dir/price_cache_ranges.json`, so a later call inside that range is

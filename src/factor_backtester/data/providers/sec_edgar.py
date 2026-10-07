@@ -13,8 +13,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-from src.data.providers.base import empty_fundamentals
-from src.data.providers.xbrl import EPS_CONCEPTS, first_usable_eps, fundamentals_from_facts
+from factor_backtester.data.providers.base import empty_fundamentals
+from factor_backtester.data.providers.xbrl import EPS_CONCEPTS, first_usable_eps, fundamentals_from_facts
 
 _logger = logging.getLogger(__name__)
 
@@ -143,7 +143,7 @@ def resolve_cik(ticker: str, ticker_to_cik: dict) -> int | None:
 def debug_print_resolved_ciks(tickers: list[str] = ("AAPL", "V", "MMC", "WBA"), cache_dir: str = "data_cache") -> dict:
     """Manual sanity check: resolve and print CIKs for the given tickers.
 
-    Run directly (`python -m src.data.providers.sec_edgar`) to eyeball that
+    Run directly (`python -m factor_backtester.data.providers.sec_edgar`) to eyeball that
     ticker->CIK resolution is working for known-tricky names. Returns the
     resolved map so it's also usable from a test/REPL.
     """

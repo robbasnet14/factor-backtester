@@ -18,13 +18,13 @@ import pandas as pd
 import pytest
 import requests
 
-from src.data import fundamentals, prices
-from src.data.loader import default_price_providers, load_fundamentals, load_prices
-from src.data.partial import PartialDataError
-from src.data.providers import sec_edgar, yahoo
-from src.data.providers.tiingo import TiingoProvider
-from src.data.providers.yahoo import YahooProvider
-from src.data.universe import build_universe
+from factor_backtester.data import fundamentals, prices
+from factor_backtester.data.loader import default_price_providers, load_fundamentals, load_prices
+from factor_backtester.data.partial import PartialDataError
+from factor_backtester.data.providers import sec_edgar, yahoo
+from factor_backtester.data.providers.tiingo import TiingoProvider
+from factor_backtester.data.providers.yahoo import YahooProvider
+from factor_backtester.data.universe import build_universe
 from tests.fakes import FakeFundamentalsProvider, FakePriceProvider, flat_split_history
 
 

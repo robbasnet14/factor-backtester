@@ -6,10 +6,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.features import registry
-from src.features.factors import momentum, value
-from src.features.registry import compute_factors, get_factor, register_factor, registered_factors
-from src.features.transforms import zscore_cross_section
+from factor_backtester.features import registry
+from factor_backtester.features.factors import momentum, value
+from factor_backtester.features.registry import compute_factors, get_factor, register_factor, registered_factors
+from factor_backtester.features.transforms import zscore_cross_section
 
 PLUGINS_DIR = Path(registry.__file__).parent / "plugins"
 MONTHS = pd.date_range("2019-01-31", periods=18, freq="ME")
@@ -43,7 +43,7 @@ def test_a_module_dropped_into_the_plugin_package_is_registered_with_nothing_els
     name = f"tmp_factor_{uuid.uuid4().hex[:8]}"
     module_file = PLUGINS_DIR / f"{name}.py"
     module_file.write_text(
-        "from src.features.registry import register_factor\n\n\n"
+        "from factor_backtester.features.registry import register_factor\n\n\n"
         f"@register_factor({name!r}, inputs=('prices',))\n"
         "def compute(prices):\n"
         "    return prices.pivot(index='date', columns='ticker', values='close')\n"

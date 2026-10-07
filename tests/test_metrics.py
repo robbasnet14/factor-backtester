@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.analytics.metrics import (
+from factor_backtester.analytics.metrics import (
     annualized_return,
     annualized_volatility,
     average_turnover,

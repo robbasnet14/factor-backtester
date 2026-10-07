@@ -7,8 +7,8 @@ window. A name without a full window is NaN. The score is minus that
 volatility: low volatility is the attractive end (see the registry's sign
 convention).
 """
-from src.features.factors import _pivot_prices_wide
-from src.features.registry import register_factor
+from factor_backtester.features.factors import _pivot_prices_wide
+from factor_backtester.features.registry import register_factor
 
 
 @register_factor("low_vol", inputs=("prices",))

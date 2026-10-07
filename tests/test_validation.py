@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtest.validation import make_walk_forward_folds, walk_forward_backtest
+from factor_backtester.backtest.validation import make_walk_forward_folds, walk_forward_backtest
 
 
 def test_folds_expand_and_embargo_gap_is_excluded():
@@ -86,7 +86,7 @@ def test_first_period_of_each_fold_costed_from_flat():
 
 
 def test_stitched_metrics_computed_only_on_oos_series():
-    from src.analytics.metrics import sharpe
+    from factor_backtester.analytics.metrics import sharpe
 
     dates = pd.date_range("2010-01-31", periods=48, freq="ME")
     rng = np.random.default_rng(1)

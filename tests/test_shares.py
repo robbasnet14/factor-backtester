@@ -3,9 +3,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.data.cache import PriceCache
-from src.data.providers.xbrl import fundamentals_from_facts, shares_by_filing
-from src.data.splits import ttm_fundamentals
+from factor_backtester.data.cache import PriceCache
+from factor_backtester.data.providers.xbrl import fundamentals_from_facts, shares_by_filing
+from factor_backtester.data.splits import ttm_fundamentals
 from tests.fakes import FakePriceProvider
 
 
