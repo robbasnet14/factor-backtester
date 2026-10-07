@@ -1,5 +1,4 @@
 """PriceCache: split-aware refreshes and the share basis of `close`."""
-import numpy as np
 import pandas as pd
 import pytest
 

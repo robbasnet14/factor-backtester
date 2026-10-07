@@ -9,6 +9,7 @@ import re
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 
@@ -68,7 +69,7 @@ class Skiplist:
             self._changed = True
 
     def save(self) -> None:
-        if self._changed:
+        if self._changed and self._path is not None:
             save_json(self._path, self._entries)
             self._changed = False
 
@@ -184,7 +185,7 @@ class PriceCache:
             merged = merged.assign(close=float("nan"), split_ratio=float("nan"))
         sliced = merged[(merged["date"] >= start) & (merged["date"] <= end)].copy()
         # Put `close` on the basis in effect at `end` by undoing later splits.
-        sliced["close"] *= merged.loc[merged["date"] > end, "split_ratio"].prod()
+        sliced["close"] *= cast(float, merged.loc[merged["date"] > end, "split_ratio"].prod())
         sliced.insert(1, "ticker", ticker.upper())
         return sliced[["date", "ticker", "adj_close", "close", "split_ratio"]]
 

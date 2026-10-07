@@ -63,8 +63,8 @@ def test_a_later_provider_with_data_makes_an_earlier_failure_harmless(tmp_path):
 
 def test_a_failed_ticker_stops_the_fundamentals_load_unless_partial_is_allowed(tmp_path):
     provider = FakeFundamentalsProvider(rows={"AAA": QUARTERS, "BBB": QUARTERS}, error={"BBB": ConnectionError("SEC 503")})
-    load = dict(start="2020-01-01", end="2020-12-31", lag_days=0, cache_dir=str(tmp_path), provider=provider,
-                splits=flat_split_history(["aaa", "bbb"]))
+    load = {"start": "2020-01-01", "end": "2020-12-31", "lag_days": 0, "cache_dir": str(tmp_path),
+            "provider": provider, "splits": flat_split_history(["aaa", "bbb"])}
 
     with pytest.raises(PartialDataError) as caught:
         load_fundamentals(["aaa", "bbb"], **load)

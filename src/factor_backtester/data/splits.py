@@ -15,6 +15,8 @@ after its 2020 4-for-1 split, while its earnings didn't; deriving a Q4 as
 the fiscal-year total minus Q1-Q3 gave NVDA a loss of -$1.09 for the quarter
 after its 2021 split, when it earned $1.18.
 """
+from typing import cast
+
 import pandas as pd
 
 from factor_backtester.data.providers.xbrl import fill_missing_q4
@@ -34,7 +36,7 @@ def later_split_factor(splits: pd.Series, dates: pd.Series) -> pd.Series:
     def factor(date: pd.Timestamp) -> float:
         if date < first_known:
             return float("nan")
-        return float(events[events.index > date].prod())
+        return float(cast(float, events[events.index > date].prod()))
 
     return dates.map(factor)
 

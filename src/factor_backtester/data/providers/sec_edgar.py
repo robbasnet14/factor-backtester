@@ -8,6 +8,7 @@ every request and rate-limits abusive callers (see `_SEC_HEADERS`). SEC's
 import json
 import logging
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 import pandas as pd
@@ -81,8 +82,8 @@ class SecEdgarProvider:
         else:
             _logger.info("%s: SEC returned %d us-gaap concepts (CIK %d)", ticker, len(us_gaap), cik)
 
-        eps_q, eps_annual, eps_concept_used = first_usable_eps(us_gaap)
-        if eps_q is None:
+        usable = first_usable_eps(us_gaap)
+        if usable is None:
             _logger.info(
                 "%s: no usable EPS facts in any of %s (CIK %d) — often a multi-share-class company that "
                 "tags EPS via a custom XBRL extension SEC's company-facts API doesn't expose",
@@ -91,6 +92,7 @@ class SecEdgarProvider:
                 cik,
             )
             return empty_fundamentals()
+        eps_q, eps_annual, eps_concept_used = usable
         _logger.info("%s: using %s for EPS (%d quarterly observations)", ticker, eps_concept_used, len(eps_q))
         return fundamentals_from_facts(us_gaap, eps_q, eps_annual, facts.get("facts", {}).get("dei", {}))
 
@@ -111,7 +113,7 @@ def sec_get(url: str) -> dict:
         resp.raise_for_status()  # other 4xx (e.g. 404) fail immediately, no retry
         time.sleep(_POLITE_DELAY_SECONDS)
         return resp.json()
-    raise last_error  # pragma: no cover — loop always returns or raises above
+    raise AssertionError("unreachable: the loop always returns or raises")  # pragma: no cover
 
 
 def load_ticker_to_cik_map(path: str | Path) -> dict:
@@ -140,7 +142,7 @@ def resolve_cik(ticker: str, ticker_to_cik: dict) -> int | None:
     return None
 
 
-def debug_print_resolved_ciks(tickers: list[str] = ("AAPL", "V", "MMC", "WBA"), cache_dir: str = "data_cache") -> dict:
+def debug_print_resolved_ciks(tickers: Sequence[str] = ("AAPL", "V", "MMC", "WBA"), cache_dir: str = "data_cache") -> dict:
     """Manual sanity check: resolve and print CIKs for the given tickers.
 
     Run directly (`python -m factor_backtester.data.providers.sec_edgar`) to eyeball that

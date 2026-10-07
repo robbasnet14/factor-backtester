@@ -63,7 +63,7 @@ def _pivot_prices_wide(prices: pd.DataFrame, column: str = "adj_close") -> pd.Da
     return prices.pivot(index="date", columns="ticker", values=column).sort_index()
 
 
-def _fundamentals_metric_to_monthly(fundamentals: pd.DataFrame, column: str, monthly_index: pd.DatetimeIndex) -> pd.DataFrame:
+def _fundamentals_metric_to_monthly(fundamentals: pd.DataFrame, column: str, monthly_index: pd.Index) -> pd.DataFrame:
     """Point-in-time carry-forward of a fundamentals column onto `monthly_index`.
 
     Fundamentals arrive on irregular (already look-ahead-lagged) dates.

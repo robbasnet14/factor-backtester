@@ -49,7 +49,9 @@ class Factor:
 _REGISTRY: dict[str, Factor] = {}
 
 
-def register_factor(name: str, *, inputs: tuple[str, ...]):
+def register_factor(
+    name: str, *, inputs: tuple[str, ...]
+) -> Callable[[Callable[..., pd.DataFrame]], Callable[..., pd.DataFrame]]:
     """Decorator registering `fn` as factor `name`, needing `inputs`.
     Unknown inputs or a duplicate name fail here, at import time, rather
     than on the first backtest that uses the factor."""

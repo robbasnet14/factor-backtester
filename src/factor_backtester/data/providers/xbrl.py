@@ -11,6 +11,8 @@ so they can only be combined after the loader restates them onto one (see
 per-share) and `roe` is TTM `NetIncomeLoss` / that equity snapshot; both are
 company totals, so splits don't affect them.
 """
+from typing import cast
+
 import pandas as pd
 
 ACCEPTED_FORMS = ("10-Q", "10-K", "10-Q/A", "10-K/A")
@@ -24,15 +26,16 @@ _ANNUAL_MAX_DAYS = 380
 EPS_CONCEPTS = ("EarningsPerShareDiluted", "EarningsPerShareBasicAndDiluted", "EarningsPerShareBasic")
 
 
-def first_usable_eps(us_gaap: dict) -> tuple[pd.DataFrame | None, pd.DataFrame | None, str | None]:
+def first_usable_eps(us_gaap: dict) -> tuple[pd.DataFrame, pd.DataFrame, str] | None:
     """Try each concept in `EPS_CONCEPTS` in order and return (quarterly,
     annual, concept) for the first that yields any quarterly observations
-    once missing Q4s are counted as derivable from the annual figure."""
+    once missing Q4s are counted as derivable from the annual figure, or
+    None if none does."""
     for concept in EPS_CONCEPTS:
         quarterly, annual = extract_duration_facts(us_gaap.get(concept, {}))
         if not fill_missing_q4(quarterly, annual).empty:
             return quarterly, annual, concept
-    return None, None, None
+    return None
 
 
 def shares_by_filing(dei: dict, us_gaap: dict) -> pd.DataFrame:
@@ -126,7 +129,7 @@ def fill_missing_q4(quarterly: pd.DataFrame, annual: pd.DataFrame) -> pd.DataFra
         prior = quarterly[quarterly["end"] < arow.end].sort_values("end").tail(3)
         if len(prior) != 3 or (arow.end - prior["end"].min()).days > 400:
             continue  # not enough of, or too stale a, Q1-Q3 run to derive Q4 from
-        derived_rows.append({"end": arow.end, "filed": arow.filed, "val": arow.val - prior["val"].sum(min_count=3)})
+        derived_rows.append({"end": arow.end, "filed": arow.filed, "val": cast(float, arow.val) - prior["val"].sum(min_count=3)})
 
     if not derived_rows:
         return quarterly

@@ -1,4 +1,6 @@
 """Sanity checks for Step 7: walk-forward folds + purge/embargo stitching."""
+from itertools import pairwise
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -20,11 +22,11 @@ def test_folds_expand_and_embargo_gap_is_excluded():
         assert gap_days >= 28  # ~1 month
 
     # expanding window: each fold's training window absorbs the prior fold's test block
-    for prev, cur in zip(folds, folds[1:]):
+    for prev, cur in pairwise(folds):
         assert cur["train_end"] == prev["test_end"]
 
     # consecutive test blocks never overlap
-    for prev, cur in zip(folds, folds[1:]):
+    for prev, cur in pairwise(folds):
         assert cur["test_start"] > prev["test_end"] or cur["test_start"] == prev["test_end"]
 
 

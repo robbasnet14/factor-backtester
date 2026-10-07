@@ -80,7 +80,7 @@ def load_prices(
     came from each provider, including how many were skipped via the skiplist.
     """
     custom = providers is not None
-    chain = tuple(providers) if custom else default_price_providers()
+    chain = tuple(providers) if providers is not None else default_price_providers()
     if not chain:
         raise ValueError("load_prices: providers must contain at least one PriceProvider")
 

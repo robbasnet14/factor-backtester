@@ -1,4 +1,6 @@
 """Performance analytics."""
+from typing import cast
+
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -24,7 +26,7 @@ def annualized_return(returns: pd.Series, periods_per_year: int = 252) -> float:
     if r.empty:
         return float("nan")
     growth = (1 + r).prod()
-    return float(growth ** (periods_per_year / len(r)) - 1)
+    return float(cast(float, growth) ** (periods_per_year / len(r)) - 1)
 
 
 def annualized_volatility(returns: pd.Series, periods_per_year: int = 252) -> float:

@@ -47,7 +47,7 @@ class TiingoProvider:
 def _headers() -> dict:
     key = os.environ.get("TIINGO_KEY")
     if not key:
-        raise EnvironmentError(
+        raise OSError(
             "TIINGO_KEY is not set — required for the Tiingo fallback used when yfinance has no "
             "data for a ticker. Sign up at https://www.tiingo.com and run: export TIINGO_KEY=your_key_here"
         )
@@ -76,4 +76,4 @@ def _get(url: str, params: dict) -> list:
         resp.raise_for_status()  # other 4xx/5xx fail immediately, no retry
         time.sleep(_POLITE_DELAY_SECONDS)
         return resp.json()
-    raise last_error  # pragma: no cover — loop always returns or raises above
+    raise AssertionError("unreachable: the loop always returns or raises")  # pragma: no cover

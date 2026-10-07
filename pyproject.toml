@@ -23,7 +23,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov>=7.0", "mypy", "ruff"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=7.0",
+    # Pinned to a minor version: new releases add rules and checks, which would
+    # fail CI with no change to the code.
+    "mypy>=2.4,<2.5",
+    "ruff>=0.16,<0.17",
+    "pandas-stubs",
+    "scipy-stubs",
+    "types-PyYAML",
+    "types-requests",
+]
 
 [project.scripts]
 factor-backtest = "factor_backtester.cli:main"
@@ -36,3 +47,37 @@ packages = ["src/factor_backtester"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+extend-select = ["I"]  # import sorting, on top of ruff's defaults
+
+[tool.ruff.lint.per-file-ignores]
+# The provider-contract boundary: any exception a provider raises means "this
+# ticker failed", which is recorded and reported (fatal unless allow_partial),
+# not swallowed. Catching narrower types would let an unexpected error type
+# escape as a crash mid-load instead of being reported with the rest.
+"src/factor_backtester/data/prices.py" = ["BLE001"]
+"src/factor_backtester/data/fundamentals.py" = ["BLE001"]
+
+[tool.mypy]
+files = ["src"]
+python_version = "3.11"
+# Default checks plus these. Not --strict: --warn-return-any flags each place
+# a JSON, YAML or HTTP response (typed Any) is returned, and fixing those
+# would mean casts that add no information.
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+strict_equality = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_reexport = true
+
+# TODO: per-module overrides; each is a gap to close, not a preference.
+[[tool.mypy.overrides]]
+module = ["yfinance", "yfinance.*"]
+ignore_missing_imports = true  # yfinance ships no type information (no py.typed, no stubs package)

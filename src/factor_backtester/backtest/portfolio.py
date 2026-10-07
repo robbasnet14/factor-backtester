@@ -1,4 +1,6 @@
 """Portfolio construction from factor scores."""
+from typing import cast
+
 import pandas as pd
 
 
@@ -21,7 +23,7 @@ def tradable_on_rebalance(daily_prices: pd.DataFrame, rebalance_dates: pd.Index)
     Returns a boolean (rebalance date x ticker) frame; a rebalance date with
     no price data in its month is all-False.
     """
-    months = daily_prices.index.to_period("M")
+    months = cast(pd.DatetimeIndex, daily_prices.index).to_period("M")
     # groupby().last() on a boolean frame is simply the value on each month's last trading day.
     priced_on_last_day = daily_prices.notna().groupby(months).last()
     rebalance_dates = pd.DatetimeIndex(rebalance_dates)

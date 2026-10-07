@@ -39,7 +39,7 @@ class BacktestResult:
     failed_tickers: dict[str, str]  # empty unless allow_partial let a failed load through
 
 
-def print_summary(title: str, returns: pd.Series, weights: pd.DataFrame, n_trials: int):
+def print_summary(title: str, returns: pd.Series, weights: pd.DataFrame, n_trials: int) -> None:
     weights_realized = weights.reindex(returns.index)
     summary = {
         "Annualized return": f"{annualized_return(returns, PERIODS_PER_YEAR):.2%}",
@@ -57,7 +57,7 @@ def print_summary(title: str, returns: pd.Series, weights: pd.DataFrame, n_trial
         print(f"{label:<{label_width}}  {value_str:>10}")
 
 
-def print_cost_sensitivity(rows: dict[str, tuple[pd.Series, pd.Series]], n_trials: int):
+def print_cost_sensitivity(rows: dict[str, tuple[pd.Series, pd.Series]], n_trials: int) -> None:
     """One line per cost model: in-sample Sharpe plus the out-of-sample headline metrics.
     Turnover is the same under every model (the weights don't change), so it isn't repeated."""
     print("\nCost sensitivity (same portfolios, different cost models)")
@@ -74,7 +74,7 @@ def print_cost_sensitivity(rows: dict[str, tuple[pd.Series, pd.Series]], n_trial
         )
 
 
-def print_partial_data_banner(failed: dict[str, str]):
+def print_partial_data_banner(failed: dict[str, str]) -> None:
     """Shown when --allow-partial let a run continue without tickers whose
     data source failed, at the start of the output and again at the end."""
     rule = "!" * 78
@@ -173,14 +173,14 @@ def run(cfg: dict, *, allow_partial: bool = False) -> BacktestResult:
     print_coverage_summary(report)
 
     wf_cfg = cfg.get("validation", {}).get("walk_forward", {})
-    wf_kwargs = dict(
-        start=start,
-        end=end,
-        initial_train_months=wf_cfg.get("initial_train_months", 60),
-        test_months=wf_cfg.get("test_months", 12),
-        embargo_months=wf_cfg.get("embargo_months", 1),
-        prices=monthly_prices,
-    )
+    wf_kwargs = {
+        "start": start,
+        "end": end,
+        "initial_train_months": wf_cfg.get("initial_train_months", 60),
+        "test_months": wf_cfg.get("test_months", 12),
+        "embargo_months": wf_cfg.get("embargo_months", 1),
+        "prices": monthly_prices,
+    }
     oos_returns, folds = walk_forward_backtest(weights, forward_returns, cost_bps=costs, **wf_kwargs)
     print(f"\nWalk-forward folds: {len(folds)}")
     for i, fold in enumerate(folds):

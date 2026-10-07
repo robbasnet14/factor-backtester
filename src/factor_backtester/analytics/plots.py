@@ -13,7 +13,7 @@ _STRATEGY_COLOR = "#2a78d6"   # categorical slot 1 (blue)
 _BENCHMARK_COLOR = "#1baf7a"  # categorical slot 2 (aqua)
 
 
-def plot_equity_curve(returns: pd.Series, benchmark: pd.Series | None = None, path: str = "outputs/equity_curve.png"):
+def plot_equity_curve(returns: pd.Series, benchmark: pd.Series | None = None, path: str = "outputs/equity_curve.png") -> None:
     """Plot cumulative growth of $1 for `returns`, optionally overlaid with
     `benchmark` (e.g. SPY) on the same periods, and save to `path`.
 
@@ -27,14 +27,14 @@ def plot_equity_curve(returns: pd.Series, benchmark: pd.Series | None = None, pa
     fig, ax = plt.subplots(figsize=(10, 6), facecolor=_SURFACE)
     ax.set_facecolor(_SURFACE)
 
-    ax.plot(equity.index, equity.values, color=_STRATEGY_COLOR, linewidth=2, solid_capstyle="round", label="Strategy")
+    ax.plot(equity.index, equity.to_numpy(), color=_STRATEGY_COLOR, linewidth=2, solid_capstyle="round", label="Strategy")
 
     if benchmark is not None:
         b = benchmark.reindex(r.index).dropna()
         bench_equity = (1 + b).cumprod()
         ax.plot(
             bench_equity.index,
-            bench_equity.values,
+            bench_equity.to_numpy(),
             color=_BENCHMARK_COLOR,
             linewidth=2,
             linestyle="--",
@@ -52,7 +52,7 @@ def plot_equity_curve(returns: pd.Series, benchmark: pd.Series | None = None, pa
         ax.spines[spine].set_visible(False)
     ax.spines["bottom"].set_color(_GRIDLINE)
 
-    legend = ax.legend(frameon=False, loc="upper left", labelcolor=_INK_SECONDARY)
+    ax.legend(frameon=False, loc="upper left", labelcolor=_INK_SECONDARY)
 
     out_path = Path(path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

@@ -29,14 +29,19 @@ What the gate can't do: catch errors smaller than two orders of magnitude
 two figures disagree. Where the float is the mis-scaled one (HST, WAT), a
 correct market cap is dropped. That is the cost of a cross-check.
 """
+from typing import cast
+
 import numpy as np
+import pandas as pd
 
 from factor_backtester.features.factors import _fundamentals_metric_to_monthly, _pivot_prices_wide
 from factor_backtester.features.registry import register_factor
 
 
 @register_factor("size", inputs=("fundamentals", "prices"))
-def compute(fundamentals, prices, float_floor=0.01, float_ceiling=100.0):
+def compute(
+    fundamentals: pd.DataFrame, prices: pd.DataFrame, float_floor: float = 0.01, float_ceiling: float = 100.0
+) -> pd.DataFrame:
     close = _pivot_prices_wide(prices, "close").resample("ME").last()
     shares = _fundamentals_metric_to_monthly(fundamentals, "shares_outstanding", close.index)
     public_float = _fundamentals_metric_to_monthly(fundamentals, "public_float", close.index)
@@ -46,4 +51,5 @@ def compute(fundamentals, prices, float_floor=0.01, float_ceiling=100.0):
     market_cap = shares * close
     ratio = market_cap / public_float
     plausible = (market_cap > 0) & (ratio >= float_floor) & (ratio <= float_ceiling)
-    return -np.log(market_cap.where(plausible))
+    # np.log on a DataFrame returns a DataFrame (pandas implements numpy's ufuncs); the stubs say ndarray.
+    return cast(pd.DataFrame, -np.log(market_cap.where(plausible)))

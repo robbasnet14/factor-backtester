@@ -37,3 +37,24 @@ jobs:
         run: >
           python -m pytest -v
           --deselect tests/test_data.py::test_load_fundamentals_real_aapl_returns_nonempty_2019_2020
+
+  lint:
+    name: ruff + mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: ruff check
+        run: ruff check
+
+      - name: mypy
+        run: mypy

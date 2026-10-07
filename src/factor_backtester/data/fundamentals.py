@@ -80,7 +80,7 @@ def load_fundamentals(
     some have none).
     """
     custom = provider is not None
-    if custom:
+    if provider is not None:
         root = custom_cache_root(cache_dir, (provider,))
     else:
         root = Path(cache_dir)
@@ -90,7 +90,7 @@ def load_fundamentals(
     cache = FundamentalsCache(root)
     skiplist = Skiplist(None if custom else root / _UNAVAILABLE_FUNDAMENTALS_FILENAME)
 
-    split_history = {t.upper(): g.set_index("date")["split_ratio"] for t, g in splits.groupby("ticker")}
+    split_history = {str(t).upper(): g.set_index("date")["split_ratio"] for t, g in splits.groupby("ticker")}
     no_history = pd.Series(dtype="float64")
 
     frames = []
