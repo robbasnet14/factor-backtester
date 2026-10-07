@@ -7,7 +7,7 @@ universe:
 # ---- Data ----
 data:
   provider: "yfinance+sec"  # prices: Yahoo Finance (yfinance); fundamentals: SEC EDGAR XBRL — both free, keyless
-  cache_dir: "data_cache"
+  cache_dir: "data_cache"   # relative paths here are relative to this file
   fundamentals_lag_days: 90 # extra buffer past SEC's actual filing date; filing date alone already prevents look-ahead
 
 # ---- Factors ----
@@ -49,3 +49,6 @@ validation:
     initial_train_months: 60   # first in-sample window before any OOS testing starts
     test_months: 12            # length of each out-of-sample block
     embargo_months: 1          # gap between train and test — no rebalance scored in it
+
+# ---- Outputs ----
+output_dir: "outputs"       # return series, coverage report and charts; relative to this file

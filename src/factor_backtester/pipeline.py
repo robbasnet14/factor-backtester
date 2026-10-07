@@ -1,13 +1,11 @@
-"""Entry point: wire everything together. Grows as you complete each step."""
-import argparse
-import sys
+"""The full backtest a config describes: load data, compute factors, build
+portfolios, backtest in-sample and walk-forward, report. `factor-backtest
+run` calls `run`; it can also be called directly with a config dict from
+`factor_backtester.utils.config.load_config`."""
+from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
-
-# Running `python scripts/run_backtest.py` puts scripts/ on sys.path, not
-# src/, so `factor_backtester` wouldn't be importable without this.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from factor_backtester.analytics.metrics import (
     annualized_return,
@@ -26,13 +24,19 @@ from factor_backtester.backtest.engine import forward_returns_from_prices, run_b
 from factor_backtester.backtest.portfolio import decile_portfolios, tradable_on_rebalance
 from factor_backtester.backtest.validation import walk_forward_backtest
 from factor_backtester.data.loader import load_fundamentals, load_prices
-from factor_backtester.data.partial import PartialDataError
 from factor_backtester.data.universe import build_universe
 from factor_backtester.features.registry import compute_factors
 from factor_backtester.features.transforms import combine_factors
-from factor_backtester.utils.config import load_config
 
 PERIODS_PER_YEAR = 12  # monthly rebalance
+
+
+@dataclass(frozen=True)
+class BacktestResult:
+    net_returns: pd.Series        # in-sample, net of costs (reference only)
+    oos_returns: pd.Series        # walk-forward out-of-sample, net of costs: the headline
+    weights: pd.DataFrame         # portfolio weights per rebalance date
+    failed_tickers: dict[str, str]  # empty unless allow_partial let a failed load through
 
 
 def print_summary(title: str, returns: pd.Series, weights: pd.DataFrame, n_trials: int):
@@ -82,16 +86,12 @@ def print_partial_data_banner(failed: dict[str, str]):
     print(rule)
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="config.yaml")
-    ap.add_argument(
-        "--allow-partial",
-        action="store_true",
-        help="if a data source fails for some tickers, continue without them instead of stopping",
-    )
-    args = ap.parse_args()
-    cfg = load_config(args.config)
+def run(cfg: dict, *, allow_partial: bool = False) -> BacktestResult:
+    """Run the backtest `cfg` describes, printing a report and writing
+    outputs to `cfg["output_dir"]`. Raises `PartialDataError` if a data
+    source fails for some tickers, unless `allow_partial`."""
+    output_dir = Path(cfg["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     uni_cfg, data_cfg = cfg["universe"], cfg["data"]
     factor_cfg, port_cfg, cost_cfg = cfg["factors"], cfg["portfolio"], cfg["costs"]
@@ -109,20 +109,17 @@ def main():
     # what puts restated EPS and `close` on the same share basis.
     history_start = (pd.Timestamp(start) - pd.DateOffset(years=2)).date().isoformat()
     benchmark_ticker = cfg["benchmark"]
-    try:
-        price_history = load_prices(tickers, history_start, end, cache_dir=cache_dir, allow_partial=args.allow_partial)
-        fundamentals = load_fundamentals(
-            tickers,
-            start,
-            end,
-            lag_days=data_cfg["fundamentals_lag_days"],
-            cache_dir=cache_dir,
-            splits=price_history[["date", "ticker", "split_ratio"]],
-            allow_partial=args.allow_partial,
-        )
-        benchmark_prices = load_prices([benchmark_ticker], start, end, cache_dir=cache_dir, allow_partial=args.allow_partial)
-    except PartialDataError as e:
-        sys.exit(f"\nStopped before running the backtest: {e}")
+    price_history = load_prices(tickers, history_start, end, cache_dir=cache_dir, allow_partial=allow_partial)
+    fundamentals = load_fundamentals(
+        tickers,
+        start,
+        end,
+        lag_days=data_cfg["fundamentals_lag_days"],
+        cache_dir=cache_dir,
+        splits=price_history[["date", "ticker", "split_ratio"]],
+        allow_partial=allow_partial,
+    )
+    benchmark_prices = load_prices([benchmark_ticker], start, end, cache_dir=cache_dir, allow_partial=allow_partial)
     failed = {
         **{t: f"prices: {e}" for t, e in price_history.attrs["failed_tickers"].items()},
         **{t: f"fundamentals: {e}" for t, e in fundamentals.attrs["failed_tickers"].items()},
@@ -164,8 +161,7 @@ def main():
     # at its last available price instead of silently assuming it earned 0%.
     net_returns = run_backtest(weights, forward_returns, cost_bps=costs, prices=monthly_prices).dropna()
 
-    out_path = Path("outputs") / "net_returns.csv"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / "net_returns.csv"
     net_returns.to_csv(out_path, header=True)
     print(f"Backtest complete: {len(net_returns)} periods -> {out_path}")
 
@@ -173,7 +169,7 @@ def main():
     print_summary("Full-period summary (IN-SAMPLE — reference only, not the headline number)", net_returns, weights, n_trials)
 
     report = coverage_report(composite, factor_frames, universe)
-    report.to_csv(Path("outputs") / "coverage_report.csv")
+    report.to_csv(output_dir / "coverage_report.csv")
     print_coverage_summary(report)
 
     wf_cfg = cfg.get("validation", {}).get("walk_forward", {})
@@ -193,7 +189,7 @@ def main():
             f"test [{fold['test_start'].date()} -> {fold['test_end'].date()})"
         )
 
-    oos_path = Path("outputs") / "oos_net_returns.csv"
+    oos_path = output_dir / "oos_net_returns.csv"
     oos_returns.to_csv(oos_path, header=True)
     print_summary("Walk-forward OUT-OF-SAMPLE summary (THE headline number)", oos_returns, weights, n_trials)
 
@@ -216,12 +212,10 @@ def main():
     benchmark_monthly = benchmark_prices.pivot(index="date", columns="ticker", values="adj_close")[benchmark_ticker]
     benchmark_forward_returns = benchmark_monthly.resample("ME").last().pct_change(fill_method=None).shift(-1)
 
-    plot_equity_curve(net_returns, benchmark=benchmark_forward_returns, path="outputs/equity_curve.png")
-    plot_equity_curve(oos_returns, benchmark=benchmark_forward_returns, path="outputs/equity_curve_oos.png")
-    print("\nSaved outputs/equity_curve.png (full period) and outputs/equity_curve_oos.png (walk-forward OOS)")
+    plot_equity_curve(net_returns, benchmark=benchmark_forward_returns, path=str(output_dir / "equity_curve.png"))
+    plot_equity_curve(oos_returns, benchmark=benchmark_forward_returns, path=str(output_dir / "equity_curve_oos.png"))
+    print(f"\nSaved equity_curve.png (full period) and equity_curve_oos.png (walk-forward OOS) to {output_dir}")
     if failed:
         print_partial_data_banner(failed)
 
-
-if __name__ == "__main__":
-    main()
+    return BacktestResult(net_returns=net_returns, oos_returns=oos_returns, weights=weights, failed_tickers=failed)

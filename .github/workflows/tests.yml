@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # requirements.txt allows both pandas 2.x and 3.x, and they differ in ways
+      # pyproject.toml allows both pandas 2.x and 3.x, and they differ in ways
       # that matter here (e.g. pct_change forward-fills gaps by default on 2.x,
       # which silenced the engine's missing-price warning). Test both.
       matrix:
@@ -22,9 +22,10 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install dependencies
-        run: pip install -r requirements.txt "pandas==${{ matrix.pandas }}"
+        run: pip install -e ".[dev]" "pandas==${{ matrix.pandas }}"
 
       - name: Show pandas version
         run: python -c "import pandas; print('pandas', pandas.__version__)"
@@ -34,5 +35,5 @@ jobs:
       # is network-mocked.
       - name: Run tests
         run: >
-          python -m pytest tests/ -v
+          python -m pytest -v
           --deselect tests/test_data.py::test_load_fundamentals_real_aapl_returns_nonempty_2019_2020

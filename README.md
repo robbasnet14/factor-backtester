@@ -137,9 +137,10 @@ src/factor_backtester/
               factor in features/plugins/, found automatically)
   backtest/   portfolio construction, cost model, engine, walk-forward
   analytics/  performance metrics, coverage report, equity-curve chart
-scripts/run_backtest.py   the entry point that wires it all together
-tests/        138 tests, network-mocked
-config.yaml   every knob (universe, dates, costs, factors, validation)
+  pipeline.py the full run a config describes, wiring the above together
+  cli.py      the `factor-backtest` command
+tests/        145 tests, network-mocked
+config.yaml   every knob (universe, dates, costs, factors, validation, output location)
 ```
 
 ## Reproducing this
@@ -149,14 +150,19 @@ wants a descriptive User-Agent, which is set in `src/factor_backtester/data/prov
 only used as a price fallback for a few delisted names — set `TIINGO_KEY` if you have one.
 
 ```bash
+git clone https://github.com/robbasnet14/factor-backtester && cd factor-backtester
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python scripts/run_backtest.py --config config.yaml
+pip install -e .
+factor-backtest run --config config.yaml
 ```
+
+`factor-backtest factors` lists the registered factors, their inputs and their parameters.
 
 The first run pulls and caches data (slow), and records permanently-unavailable tickers in
 `data_cache/*.json` so later runs skip them. Every run after the first reads the cache and
-is quick. Outputs land in `outputs/`.
+is quick. Outputs land in `outputs/`. Both directories are set in `config.yaml` and are
+relative to that file, not to where you run the command, so the run reads and writes the
+same places from any directory.
 
 If a data source fails for some tickers (a network error, a rate limit) rather than having
 no data for them, the run stops before backtesting and lists them. Everything that did load
@@ -235,10 +241,11 @@ Add `-e TIINGO_KEY` to pass through a Tiingo key if you have one.
 ## Tests
 
 ```bash
-python -m pytest tests/
+pip install -e ".[dev]"
+python -m pytest
 ```
 
-138 tests, all network-mocked except one opt-in live SEC integration check. They cover the
+145 tests, all network-mocked except one opt-in live SEC integration check. They cover the
 easy-to-get-wrong stuff: momentum's skip-month, the point-in-time fundamentals lag, the
 delisted-name universe, never holding a name on a date it didn't trade, EPS restated across
 splits (checked against AAPL's and NVDA's real filings), turnover cost math, the
@@ -247,7 +254,7 @@ the name, and — the one I
 care about most — a test proving the engine trades on *forward* returns, never
 contemporaneous ones.
 
-CI runs the suite on both pandas 2.2 and 3.x, since `requirements.txt` allows either and
+CI runs the suite on both pandas 2.2 and 3.x, since `pyproject.toml` allows either and
 they differ in ways that matter here: on 2.x, `pct_change` forward-fills a missing price
 by default, which silently suppressed the engine's missing-price warning. One test checks
 that the warning still fires.

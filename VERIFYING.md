@@ -16,7 +16,7 @@ Here's both, step by step.
 ```bash
 cd factor-backtester
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
 
 No API keys required for the default path (Yahoo Finance + SEC EDGAR are both free and
@@ -25,10 +25,10 @@ keyless). Skip straight to step 1.
 ## 1. Run the test suite (fast, offline, ~5 seconds)
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest -v
 ```
 
-What you're checking: all 138 tests pass. This proves the individual pieces — the momentum
+What you're checking: all 145 tests pass. This proves the individual pieces — the momentum
 formula, the point-in-time lag on fundamentals, the cost model, the walk-forward fold
 logic, the delisting-exit handling, and so on — behave correctly in isolation, using
 synthetic data. It does **not** by itself prove real market data flows through cleanly;
@@ -42,7 +42,7 @@ still pass.
 ## 2. Run the real pipeline
 
 ```bash
-python scripts/run_backtest.py --config config.yaml
+factor-backtest run --config config.yaml
 ```
 
 This is the actual "does it work" test. What happens, in order, and what to watch for:
@@ -85,7 +85,7 @@ This is the actual "does it work" test. What happens, in order, and what to watc
 ## 3. Confirm the caching actually works
 
 ```bash
-time python scripts/run_backtest.py --config config.yaml
+time factor-backtest run --config config.yaml
 ```
 
 Run it a second time and time it. The first run is slow (network-bound); this second run
@@ -96,8 +96,8 @@ is just as slow as the first, something's wrong with the caching — worth flagg
 ## 4. (Optional) Poke at one piece directly
 
 If you want to verify a specific claim without running the whole pipeline, you can call
-the library functions directly from a Python shell (started from the repo root with
-`PYTHONPATH=src python`):
+the library functions directly from a Python shell (`pip install -e .` makes
+`factor_backtester` importable from anywhere):
 
 ```python
 from factor_backtester.data.loader import load_prices, load_fundamentals

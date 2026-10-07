@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "factor-backtester"
+version = "1.0.0"
+description = "A walk-forward backtester for cross-sectional equity factors, with pluggable factors and data sources"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Rob Basnet" }]
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "scipy>=1.13",
+    "matplotlib>=3.9",
+    "pyyaml>=6.0",
+    "pyarrow>=16.0",                # the Parquet engine behind the data cache
+    "requests>=2.32",
+    "yfinance>=1.5",                # yf.config.debug.hide_exceptions, used to tell a failure from "no data"
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=7.0", "mypy", "ruff"]
+
+[project.scripts]
+factor-backtest = "factor_backtester.cli:main"
+
+[project.urls]
+Repository = "https://github.com/robbasnet14/factor-backtester"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/factor_backtester"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
