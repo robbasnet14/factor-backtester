@@ -1,5 +1,10 @@
 # Baseline
 
+> **Historical snapshot, not current figures.** Every number below describes commit
+> `f327daf` as of 2026-09-29, before the refactor and before the tradability, cost-model
+> and value-factor fixes. The test count, results and line counts have all changed since.
+> For current figures, see [README.md](README.md).
+
 Measurements of the repo before any structural refactoring, so later changes can be
 compared against real numbers instead of estimates. Measured 2026-09-29 at commit
 `f327daf` (source code identical to `150389d`; the only later changes are to README.md).
